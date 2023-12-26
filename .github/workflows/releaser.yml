@@ -90,6 +90,6 @@ jobs:
         name: ${{ github.ref_name }}
         files: artifacts/*.zip
         body: |
-          ### ${{ github.ref }}
+          ### ${{ github.ref_name }}
           
           - （追記予定）
