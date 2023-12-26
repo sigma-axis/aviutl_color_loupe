@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34322.80
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "color_loupe", "color_loupe.vcxproj", "{576869FA-99DD-4D78-9DFF-4E47045C181F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{576869FA-99DD-4D78-9DFF-4E47045C181F}.Debug|x86.ActiveCfg = Debug|Win32
+		{576869FA-99DD-4D78-9DFF-4E47045C181F}.Debug|x86.Build.0 = Debug|Win32
+		{576869FA-99DD-4D78-9DFF-4E47045C181F}.Release|x86.ActiveCfg = Release|Win32
+		{576869FA-99DD-4D78-9DFF-4E47045C181F}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B0A1E144-E8F1-48F6-A014-8F4DEFE53587}
+	EndGlobalSection
+EndGlobal
