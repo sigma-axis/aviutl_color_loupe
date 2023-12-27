@@ -1290,7 +1290,7 @@ struct Menu {
 	static void popup_menu(HWND hwnd, const POINT& pt_screen)
 	{
 		if (!ext_obj.is_active()) return;
-		constexpr auto chk = [](UINT id, bool check) {::CheckMenuItem(cxt_menu, id, MF_BYCOMMAND | (check ? MF_CHECKED : MF_UNCHECKED)); };
+		auto chk = [cxt_menu = cxt_menu.get()](UINT id, bool check) {::CheckMenuItem(cxt_menu, id, MF_BYCOMMAND | (check ? MF_CHECKED : MF_UNCHECKED)); };
 
 		// prepare the context menu.
 		chk(IDM_CXT_FOLLOW_CURSOR,					loupe_state.position.follow_cursor);
@@ -1459,9 +1459,11 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		if (fp->exfunc->is_filter_window_disp(fp)) {
 			ext_obj.activate();
 
-			int w, h;
-			fp->exfunc->get_frame_size(editp, &w, &h);
-			on_update(w, h, fp->exfunc->get_disp_pixelp(editp, 0));
+			if (fp->exfunc->is_editing(editp) && !fp->exfunc->is_saving(editp)) {
+				int w, h;
+				fp->exfunc->get_frame_size(editp, &w, &h);
+				on_update(w, h, fp->exfunc->get_disp_pixelp(editp, 0));
+			}
 			redraw = true;
 		}
 		else ext_obj.deactivate(), DragState::DragAbort();
@@ -1660,7 +1662,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.00"
+#define PLUGIN_VERSION	"v1.01"
 #define PLUGIN_AUTHOR	"sigma_axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
