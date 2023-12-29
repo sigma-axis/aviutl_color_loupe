@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2023 sigma_axis
+Copyright (c) 2023 sigma-axis
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -49,8 +49,8 @@ union Color {
 	// conversion between COLORREF, avoiding accidental copies.
 	static Color& from(COLORREF& c) { return reinterpret_cast<Color&>(c); }
 	static const Color& from(const COLORREF& c) { return reinterpret_cast<const Color&>(c); }
-	constexpr operator COLORREF& () { return this->raw; }
-	constexpr operator const COLORREF& () const { return this->raw; }
+	constexpr operator COLORREF& () { return raw; }
+	constexpr operator const COLORREF& () const { return raw; }
 
 	constexpr Color remove_alpha() const { return { raw & 0x00ffffff }; }
 	// note: doesn't negate the alpha channel.
@@ -577,10 +577,10 @@ inline constinit class ImageBuffer {
 	}
 
 public:
-	constexpr void* const& buffer() const { return buf; }
+	constexpr const void* buffer() const { return buf; }
 	constexpr const BITMAPINFO& info() const { return bi; }
-	constexpr auto const& width() const { return wd(); }
-	constexpr auto const& height() const { return ht(); }
+	constexpr auto width() const { return wd(); }
+	constexpr auto height() const { return ht(); }
 
 	static constexpr int stride(int width) {
 		// rounding upward into a multiple of 4.
@@ -805,10 +805,7 @@ inline void draw_toast(HDC hdc, int wd, int ht)
 	case Settings::ToastPlacement::left_top:
 	case Settings::ToastPlacement::left_bottom:
 		rc_frm.left = margin;
-		rc_txt.left = rc_frm.left + pad_x;
-		rc_txt.right = rc_txt.left + l;
-		rc_frm.right = rc_txt.right + pad_x;
-		break;
+		goto from_left;
 	case Settings::ToastPlacement::right_top:
 	case Settings::ToastPlacement::right_bottom:
 		rc_frm.right = wd - margin;
@@ -819,6 +816,7 @@ inline void draw_toast(HDC hdc, int wd, int ht)
 	case Settings::ToastPlacement::center:
 	default:
 		rc_txt.left = wd / 2 - l / 2;
+	from_left:
 		rc_frm.left = rc_txt.left - pad_x;
 		rc_txt.right = rc_txt.left + l;
 		rc_frm.right = rc_txt.right + pad_x;
@@ -831,10 +829,7 @@ inline void draw_toast(HDC hdc, int wd, int ht)
 	case Settings::ToastPlacement::left_top:
 	case Settings::ToastPlacement::right_top:
 		rc_frm.top = margin;
-		rc_txt.top = rc_frm.top + pad_y;
-		rc_txt.bottom = rc_txt.top + l;
-		rc_frm.bottom = rc_txt.bottom + pad_y;
-		break;
+		goto from_top;
 	case Settings::ToastPlacement::right_bottom:
 	case Settings::ToastPlacement::left_bottom:
 		rc_frm.bottom = ht - margin;
@@ -845,6 +840,7 @@ inline void draw_toast(HDC hdc, int wd, int ht)
 	case Settings::ToastPlacement::center:
 	default:
 		rc_txt.top = ht / 2 - l / 2;
+	from_top:
 		rc_frm.top = rc_txt.top - pad_y;
 		rc_txt.bottom = rc_txt.top + l;
 		rc_frm.bottom = rc_txt.bottom + pad_y;
@@ -888,11 +884,11 @@ inline void draw(HWND hwnd)
 
 	// whether the tip is visible.
 	constexpr auto& tip = loupe_state.tip_state;
-	bool with_tip = tip.is_visible() && tip.x >= 0 &&
-		tip.x < image.width() && tip.y >= 0 && tip.y < image.height();
+	bool with_tip = tip.is_visible() &&
+		tip.x >= 0 && tip.x < image.width() && tip.y >= 0 && tip.y < image.height();
 
 	if (!is_partial && !with_tip && !loupe_state.toast.visible)
-		// most case will fall here; whole window is covered by a single image.
+		// most cases will fall here; whole window is covered by a single image.
 		draw_picture(window_hdc, vb, vp);
 	else {
 		// a bit complicated, so firstly draw it to the background DC and
@@ -1435,7 +1431,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	constexpr auto cursor_pos = [](LPARAM l) {
 		return POINT{ .x = static_cast<int16_t>(0xffff & l), .y = static_cast<int16_t>(l >> 16) };
 	};
-	bool redraw = false; BOOL ret = FALSE;
+	bool redraw = false;
 
 	static constinit bool track_mouse_event_sent = false;
 	switch (message) {
@@ -1474,7 +1470,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 
 		// clear the window when a file is closed.
 		if (::IsWindowVisible(hwnd) != FALSE)
-			draw_blank(hwnd); // can't use `bredraw = true` because exfunc->is_editing() is true at this moment.
+			draw_blank(hwnd); // can't use `redraw = true` because exfunc->is_editing() is true at this moment.
 		break;
 
 	case WM_PAINT:
@@ -1655,7 +1651,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		else draw_blank(hwnd);
 	}
 
-	return ret;
+	return FALSE;
 }
 
 ////////////////////////////////

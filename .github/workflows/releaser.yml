@@ -23,9 +23,6 @@ jobs:
         configuration: [Release]
         platform: [x86]
 
-    outputs:
-      artifact: ${{ steps.name-artifact.outputs.artifact }}
-
     steps:
     - uses: actions/checkout@v4
       with:
@@ -33,7 +30,6 @@ jobs:
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1
-
 
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
@@ -50,20 +46,15 @@ jobs:
         copy LICENSE pack
       # pick up and add any files you may need.
 
-    - name: Name artifact
-      id: name-artifact
-      shell: bash
-      run: |
-        echo "artifact=${{ env.SOLUTION_NAME }}-${{ github.ref_name }}_${{ matrix.platform }}${{ matrix.configuration }}" >> $GITHUB_OUTPUT
-
     - name: Upload the build as artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ steps.name-artifact.outputs.artifact }}
         path: pack/*
+        name: ${{ env.SOLUTION_NAME }}-${{ github.ref_name }}_${{ matrix.platform }}${{ matrix.configuration }}
+      # name can be anything as long as you can recognize.
 
   release:
-    name: Release
+    name: Create Release
     if: github.event_name == 'push' && github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-latest
@@ -73,23 +64,38 @@ jobs:
     steps:
     - uses: actions/download-artifact@v4
       with:
-        name: ${{ needs.build.outputs.artifact }}
         path: artifacts
+        merge-multiple: true # assuming a single artifact.
 
     - name: Compress
       run: |
         cd artifacts
-        zip -r aviutl_${{ env.SOLUTION_NAME }}-${{ github.ref_name }}.zip *
+        zip -r ../aviutl_${{ env.SOLUTION_NAME }}-${{ github.ref_name }}.zip *
+      # rename .zip file for downloading if necessary.
+
+    - name: Prepare release notes
+      id: release-notes
+      run: |
+        echo "name=${{ github.ref_name }} ($(date +'%Y-%m-%d'))" >> $GITHUB_OUTPUT
+        echo "### 更新内容" >> ReleaseNotes.txt
+        phase=0
+        IFS=$'\n'
+        cat artifacts/README.md | while read line; do
+          if [[ $phase == 0 ]]; then
+            if [[ $line =~ ^##*[[:space:]]{1,}'改版履歴'[[:space:]]*$ ]]; then phase=1; fi
+          elif [[ $phase == 1 ]]; then
+            if [[ $line =~ ^-[[:space:]] ]]; then phase=2; fi
+          elif [[ $line =~ ^(-|##*)[[:space:]] ]]; then break
+          else
+            echo ${line:2} >> ReleaseNotes.txt
+          fi
+        done
 
     - name: Release
       uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        draft: true
-        name: ${{ github.ref_name }}
-        files: artifacts/*.zip
-        body: |
-          ### ${{ github.ref_name }}
-          
-          - （追記予定）
+        name: ${{ steps.release-notes.outputs.name }}
+        files: '*.zip'
+        body_path: ReleaseNotes.txt

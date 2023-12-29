@@ -2,6 +2,8 @@
 
 色ピッカー付き拡大鏡プラグインです．
 
+[ダウンロードはこちら．](https://github.com/sigma-axis/aviutl_color_loupe/releases)
+
 ![色や座標を表示してくれます．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/659ac33c-d5f5-461b-8400-713c4bf24d33)
 ![ダークモードっぽい色合いにもできます．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/d12a7cee-a2d3-4f76-9222-240b3a8011e5)
 
@@ -179,7 +181,7 @@ Ctrl+右クリックで表示させられ，以下の操作ができます．
 
     - トグル / 常にカーソル追従
 
-      マウス右ボタンを離しても表示が残ります．もう一度右クリックで消えます．右ボタンを離しても情報表示のピクセル位置がマウスカーソルを追従します．
+      マウス右ボタンを離しても表示が残ります．もう一度右クリックで消えます．右ボタンを離しても情報表示のピクセル位置がマウスカーソルに追従します．
 
   - Shiftキーで移動方向固定
 
@@ -279,7 +281,7 @@ Ctrl+右クリックで表示させられ，以下の操作ができます．
 
   - 背景枠設定
 
-    `chrome_thick` で背景枠の線の太さを， `chrome_radius` で背景枠の角半径をそれぞれ指定できます．
+    `chrome_thick` で背景枠の線の太さを， `chrome_radius` で背景枠の丸角半径をそれぞれ指定できます．
 
 - 通知メッセージ表示
 
@@ -295,7 +297,7 @@ Ctrl+右クリックで表示させられ，以下の操作ができます．
 
   - 背景枠設定
 
-    `chrome_thick` で背景枠の線の太さを， `chrome_radius` で背景枠の角半径をそれぞれ指定できます．
+    `chrome_thick` で背景枠の線の太さを， `chrome_radius` で背景枠の丸角半径をそれぞれ指定できます．
 
 ## 改版履歴
 
@@ -317,7 +319,7 @@ Ctrl+右クリックで表示させられ，以下の操作ができます．
 
 The MIT License (MIT)
 
-Copyright (C) 2023 sigma_axis
+Copyright (C) 2023 sigma-axis
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
