@@ -2,7 +2,7 @@
 
 色ピッカー付き拡大鏡プラグインです．
 
-[ダウンロードはこちら．](https://github.com/sigma-axis/aviutl_color_loupe/releases)
+[ダウンロードはこちら．](https://github.com/sigma-axis/aviutl_color_loupe/releases) [紹介動画．](https://www.nicovideo.jp/watch/sm43213687)
 
 ![色や座標を表示してくれます．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/659ac33c-d5f5-461b-8400-713c4bf24d33)
 ![ダークモードっぽい色合いにもできます．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/d12a7cee-a2d3-4f76-9222-240b3a8011e5)
