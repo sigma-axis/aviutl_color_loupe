@@ -1631,9 +1631,6 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	case WM_SYSKEYDOWN:
 		// if a drag operation is being held, cancel it with ESC key.
 		if (wparam == VK_ESCAPE && DragState::DragCancel(redraw)) break;
-		[[fallthrough]];
-	case WM_KEYUP:
-	case WM_SYSKEYUP:
 
 		// ショートカットキーメッセージをメインウィンドウに丸投げする．
 		if (fp->hwnd_parent != nullptr)
