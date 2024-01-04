@@ -1656,7 +1656,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
 #define PLUGIN_VERSION	"v1.01"
-#define PLUGIN_AUTHOR	"sigma_axis"
+#define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
 

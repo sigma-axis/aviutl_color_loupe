@@ -12,6 +12,8 @@
 
 - AviUtl 1.10 (1.00 でも動作するが 1.10 推奨)
 
+  http://spring-fragrance.mints.ne.jp/aviutl
+
 - Visual C++ 再頒布可能パッケージ（\[2015/2017/2019/2022\] の x86 対応版が必要）
 
   https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist
