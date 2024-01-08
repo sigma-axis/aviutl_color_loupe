@@ -62,7 +62,8 @@
 
   - 各種設定ができます．
 
-  ![設定メニュー．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/b8212e3f-1d45-4eb0-a686-50c08df8d535)
+
+  ![設定メニュー．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/f592582a-fe21-4ffb-8c7c-0fd691fff38a)
 
 - 拡大率変更など一部操作をすると通知メッセージが表示されます．
 
@@ -120,7 +121,7 @@
 
 ### 設定メニュー
 
-![設定メニュー．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/b8212e3f-1d45-4eb0-a686-50c08df8d535)
+![設定メニュー．](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/f592582a-fe21-4ffb-8c7c-0fd691fff38a)
 
 Ctrl+右クリックで表示させられ，以下の操作ができます．
 
