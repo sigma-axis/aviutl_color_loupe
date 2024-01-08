@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2023 sigma-axis
+Copyright (c) 2024 sigma-axis
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -184,6 +184,11 @@ inline constinit struct LoupeState {
 		}
 	} toast{};
 
+	// grid
+	struct {
+		bool visible = false;
+	} grid;
+
 	////////////////////////////////
 	// coordinate transforms.
 	////////////////////////////////
@@ -288,6 +293,7 @@ inline constinit struct Settings {
 		swap_scale_level = 3,
 		copy_color_code = 4,
 		context_menu = 5,
+		toggle_grid = 6,
 	};
 
 	struct {
@@ -324,21 +330,22 @@ inline constinit struct Settings {
 		RailMode rail_mode = RailMode::cross;
 
 		wchar_t font_name[LF_FACESIZE]{ L"Consolas" };
-		int font_size = 16;
+		int8_t font_size = 16;
 
-		int box_inflate = 4;
-		int chrome_thick = 1;
-		int chrome_radius = 3;
+		int8_t box_inflate = 4;
+		int8_t chrome_thick = 1;
+		int8_t chrome_radius = 3;
 
-		constexpr static int min_font_size = 4, max_font_size = 72;
-		constexpr static int min_box_inflate = 0, max_box_inflate = 16;
-		constexpr static int min_chrome_thick = 0, max_chrome_thick = 16;
-		constexpr static int min_chrome_radius = 0, max_chrome_radius = 32;
+		constexpr static int8_t min_font_size = 4, max_font_size = 72;
+		constexpr static int8_t min_box_inflate = 0, max_box_inflate = 16;
+		constexpr static int8_t min_chrome_thick = 0, max_chrome_thick = 16;
+		constexpr static int8_t min_chrome_radius = 0, max_chrome_radius = 32;
 	} tip{};
 
 	struct {
 		bool notify_scale = true;
 		bool notify_follow_cursor = true;
+		bool notify_grid = true;
 		bool notify_clipboard = true;
 
 		ToastPlacement placement = ToastPlacement::right_bottom;
@@ -347,16 +354,30 @@ inline constinit struct Settings {
 		int duration = 3000;
 
 		wchar_t font_name[LF_FACESIZE]{ L"Yu Gothic UI" };
-		int font_size = 18;
+		int8_t font_size = 18;
 
-		int chrome_thick = 1;
-		int chrome_radius = 3;
+		int8_t chrome_thick = 1;
+		int8_t chrome_radius = 3;
 
 		constexpr static int min_duration = 200, max_duration = 60'000;
-		constexpr static int min_font_size = 4, max_font_size = 72;
-		constexpr static int min_chrome_thick = 0, max_chrome_thick = 16;
-		constexpr static int min_chrome_radius = 0, max_chrome_radius = 32;
+		constexpr static int8_t min_font_size = 4, max_font_size = 72;
+		constexpr static int8_t min_chrome_thick = 0, max_chrome_thick = 16;
+		constexpr static int8_t min_chrome_radius = 0, max_chrome_radius = 32;
 	} toast{};
+
+	struct {
+		int8_t least_scale_thin = 8;
+		int8_t least_scale_thick = 12;
+		constexpr static int8_t min_least_scale_thin = 6, max_least_scale_thin = loupe_state.zoom.max_scale_level;
+		constexpr static int8_t min_least_scale_thick = 6, max_least_scale_thick = loupe_state.zoom.max_scale_level;
+
+		// 0: no grid, 1: thin grid, 2: thick grid.
+		uint8_t grid_thick(int scale_level) const {
+			if (scale_level < least_scale_thin) return 0;
+			if (scale_level < least_scale_thick) return 1;
+			return 2;
+		}
+	} grid;
 
 	struct {
 		CommonCommand
@@ -405,6 +426,7 @@ inline constinit struct Settings {
 
 		load_bool(toast, notify_scale);
 		load_bool(toast, notify_follow_cursor);
+		load_bool(toast, notify_grid);
 		load_bool(toast, notify_clipboard);
 		load_enum(toast, placement);
 		load_enum(toast, scale_format);
@@ -421,6 +443,9 @@ inline constinit struct Settings {
 			if (::GetPrivateProfileStringA("toast", "font_name", "", buf_ansi, std::size(buf_ansi), ini_file) > 0)
 				::MultiByteToWideChar(CP_UTF8, 0, buf_ansi, -1, toast.font_name, std::size(toast.font_name));
 		}
+
+		load_int(grid, least_scale_thin);
+		load_int(grid, least_scale_thick);
 
 		load_enum(commands, left_dblclk);
 		load_enum(commands, right_dblclk);
@@ -470,6 +495,7 @@ inline constinit struct Settings {
 
 		save_bool(toast, notify_scale);
 		save_bool(toast, notify_follow_cursor);
+		save_bool(toast, notify_grid);
 		save_bool(toast, notify_clipboard);
 		save_dec(toast, placement);
 		save_dec(toast, scale_format);
@@ -486,6 +512,9 @@ inline constinit struct Settings {
 		//	::WideCharToMultiByte(CP_UTF8, 0, toast.font_name, -1, buf_ansi, std::size(buf_ansi), nullptr, nullptr);
 		//	::WriteProfileStringA("toast", "font_name", buf_ansi);
 		//}
+
+		//save_dec(grid, least_scale_thin);
+		//save_dec(grid, least_scale_thick);
 
 		save_dec(commands, left_dblclk);
 		save_dec(commands, right_dblclk);
@@ -528,6 +557,8 @@ inline void load_settings()
 		loupe_state.zoom.min_scale_level, loupe_state.zoom.max_scale_level);
 	loupe_state.position.follow_cursor = ::GetPrivateProfileIntA("state", "follow_cursor",
 		loupe_state.position.follow_cursor ? 1 : 0, path) != 0;
+	loupe_state.grid.visible = ::GetPrivateProfileIntA("state", "show_grid",
+		loupe_state.position.follow_cursor ? 1 : 0, path) != 0;
 }
 inline void save_settings()
 {
@@ -544,6 +575,8 @@ inline void save_settings()
 	::WritePrivateProfileStringA("state", "second_scale", buf, path);
 	::WritePrivateProfileStringA("state", "follow_cursor",
 		loupe_state.position.follow_cursor ? "1" : "0", path);
+	::WritePrivateProfileStringA("state", "show_grid",
+		loupe_state.grid.visible ? "1" : "0", path);
 }
 
 
@@ -651,12 +684,12 @@ public:
 	constexpr bool is_valid() const { return handle() != nullptr; }
 };
 
-constinit Handle<HFONT, [](wchar_t const(*name)[], int const* size) {
+constinit Handle<HFONT, [](wchar_t const(*name)[], int8_t const* size) {
 	return ::CreateFontW(
 		*size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET,
 		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
 		DEFAULT_PITCH | FF_DONTCARE, *name);
-}, ::DeleteObject, wchar_t const(*)[], int const*>
+}, ::DeleteObject, wchar_t const(*)[], int8_t const*>
 	tip_font{ &settings.tip.font_name, &settings.tip.font_size },
 	toast_font{ &settings.toast.font_name, &settings.toast.font_size };
 
@@ -707,6 +740,81 @@ inline void draw_picture(HDC hdc, const RECT& vb, const RECT& vp)
 	::StretchDIBits(hdc, vp.left, vp.top, vp.right - vp.left, vp.bottom - vp.top,
 		vb.left, image.height() - vb.bottom, vb.right - vb.left, vb.bottom - vb.top,
 		image.buffer(), &image.info(), DIB_RGB_COLORS, SRCCOPY);
+}
+
+// グリッド描画 (thin)
+inline void draw_grid_thin(HDC hdc, const RECT& vb, const RECT& vp)
+{
+	int w = vb.right - vb.left, W = vp.right - vp.left,
+		h = vb.bottom - vb.top, H = vp.bottom - vp.top;
+
+	auto old_mode = ::SetROP2(hdc, R2_NOT);
+	for (int x = vb.left; x < vb.right; x++) {
+		auto X = (x - vb.left) * W / w + vp.left;
+		::MoveToEx(hdc, X, vp.top, nullptr);
+		::LineTo(hdc, X, vp.bottom);
+	}
+	for (int y = vb.top; y < vb.bottom; y++) {
+		auto Y = (y - vb.top) * H / h + vp.top;
+		::MoveToEx(hdc, vp.left, Y, nullptr);
+		::LineTo(hdc, vp.right, Y);
+	}
+	::SetROP2(hdc, old_mode);
+}
+
+// グリッド描画 (thick)
+inline void draw_grid_thick(HDC hdc, const RECT& vb, const RECT& vp)
+{
+	int w = vb.right - vb.left, W = vp.right - vp.left,
+		h = vb.bottom - vb.top, H = vp.bottom - vp.top;
+
+	auto dc_brush = static_cast<HBRUSH>(::GetStockObject(DC_BRUSH));
+	constexpr Color col0 = 0x222222, col1 = 0x444444, col2 = 0x666666,
+		col3 = col2.negate(), col4 = col1.negate(), col5 = col0.negate();
+
+	RECT rch = vp, rcv = vp;
+	auto hline = [&, hdc, dc_brush](int y) { rch.top = y; rch.bottom = y + 1; ::FillRect(hdc, &rch, dc_brush); };
+	auto vline = [&, hdc, dc_brush](int x) { rcv.left = x; rcv.right = x + 1; ::FillRect(hdc, &rcv, dc_brush); };
+
+	// least significant lines.
+	::SetDCBrushColor(hdc, col3);
+	for (int x = vb.left; x < vb.right; x++) {
+		if (x % 5 != 0) vline((x - vb.left) * W / w + vp.left);
+	}
+	for (int y = vb.top; y < vb.bottom; y++) {
+		if (y % 5 != 0) hline((y - vb.top) * H / h + vp.top);
+	}
+	::SetDCBrushColor(hdc, col2);
+	for (int x = vb.left + 1; x <= vb.right; x++) {
+		if (x % 5 != 0) vline((x - vb.left) * W / w + vp.left - 1);
+	}
+	for (int y = vb.top + 1; y <= vb.bottom; y++) {
+		if (y % 5 != 0) hline((y - vb.top) * H / h + vp.top - 1);
+	}
+
+	// multiple of 5, but not 10.
+	::SetDCBrushColor(hdc, col4);
+	for (int x = vb.left + 9 - ((vb.left + 4) % 10); x < vb.right; x += 10)
+		vline((x - vb.left) * W / w + vp.left);
+	for (int y = vb.top + 9 - ((vb.top + 4) % 10); y < vb.bottom; y += 10)
+		hline((y - vb.top) * H / h + vp.top);
+	::SetDCBrushColor(hdc, col1);
+	for (int x = vb.left + 10 - ((vb.left + 5) % 10); x <= vb.right; x += 10)
+		vline((x - vb.left) * W / w + vp.left - 1);
+	for (int y = vb.top + 10 - ((vb.top + 5) % 10); y <= vb.bottom; y += 10)
+		hline((y - vb.top) * H / h + vp.top - 1);
+
+	// multiple of 10.
+	::SetDCBrushColor(hdc, col5);
+	for (int x = vb.left + 9 - ((vb.left + 9) % 10); x < vb.right; x += 10)
+		vline((x - vb.left) * W / w + vp.left);
+	for (int y = vb.top + 9 - ((vb.top + 9) % 10); y < vb.bottom; y += 10)
+		hline((y - vb.top) * H / h + vp.top);
+	::SetDCBrushColor(hdc, col0);
+	for (int x = vb.left + 10 - (vb.left % 10); x <= vb.right; x += 10)
+		vline((x - vb.left) * W / w + vp.left - 1);
+	for (int y = vb.top + 10 - (vb.top % 10); y <= vb.bottom; y += 10)
+		hline((y - vb.top) * H / h + vp.top - 1);
 }
 
 // 背景グラデーション & 枠付きの丸角矩形を描画．
@@ -882,12 +990,15 @@ inline void draw(HWND hwnd)
 	bool is_partial = vp.left > 0 || vp.right < wd ||
 		vp.top > 0 || vp.bottom < ht;
 
+	uint8_t grid_thick = loupe_state.grid.visible ?
+		settings.grid.grid_thick(loupe_state.zoom.scale_level) : 0;
+
 	// whether the tip is visible.
 	constexpr auto& tip = loupe_state.tip_state;
 	bool with_tip = tip.is_visible() &&
 		tip.x >= 0 && tip.x < image.width() && tip.y >= 0 && tip.y < image.height();
 
-	if (!is_partial && !with_tip && !loupe_state.toast.visible)
+	if (!is_partial && grid_thick == 0 && !with_tip && !loupe_state.toast.visible)
 		// most cases will fall here; whole window is covered by a single image.
 		draw_picture(window_hdc, vb, vp);
 	else {
@@ -901,6 +1012,10 @@ inline void draw(HWND hwnd)
 
 		// draw the main image.
 		draw_picture(hdc, vb, vp);
+
+		// draw the grid.
+		if (grid_thick == 1) draw_grid_thin(hdc, vb, vp);
+		else if (grid_thick >= 2) draw_grid_thick(hdc, vb, vp);
 
 		// draw the info tip.
 		if (with_tip) {
@@ -1202,6 +1317,16 @@ inline bool toggle_follow_cursor(HWND hwnd)
 		loupe_state.position.follow_cursor ? IDS_TOAST_FOLLOW_CURSOR_ON : IDS_TOAST_FOLLOW_CURSOR_OFF);
 	return true;
 }
+inline bool toggle_grid(HWND hwnd)
+{
+	loupe_state.grid.visible ^= true;
+
+	// toast message.
+	if (!settings.toast.notify_grid) return false;
+	loupe_state.toast.set_message(hwnd, settings.toast.duration,
+		loupe_state.grid.visible ? IDS_TOAST_GRID_ON : IDS_TOAST_GRID_OFF);
+	return true;
+}
 inline bool apply_zoom(HWND hwnd, int new_level, double win_ox, double win_oy)
 {
 	loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
@@ -1290,6 +1415,7 @@ struct Menu {
 
 		// prepare the context menu.
 		chk(IDM_CXT_FOLLOW_CURSOR,					loupe_state.position.follow_cursor);
+		chk(IDM_CXT_SHOW_GRID,						loupe_state.grid.visible);
 		chk(IDM_CXT_REVERSE_WHEEL,					settings.zoom.reverse_wheel);
 		chk(IDM_CXT_PIVOT_CENTER,					settings.zoom.pivot				== Settings::ZoomPivot::center);
 		chk(IDM_CXT_PIVOT_MOUSE,					settings.zoom.pivot				== Settings::ZoomPivot::cursor);
@@ -1310,6 +1436,7 @@ struct Menu {
 		chk(IDM_CXT_TIP_RAIL_OCTAGONAL,				settings.tip.rail_mode			== Settings::RailMode::octagonal);
 		chk(IDM_CXT_TOAST_NOTIFY_SCALE,				settings.toast.notify_scale);
 		chk(IDM_CXT_TOAST_NOTIFY_FOLLOW_CURSOR,		settings.toast.notify_follow_cursor);
+		chk(IDM_CXT_TOAST_NOTIFY_TOGGLE_GRID,		settings.toast.notify_grid);
 		chk(IDM_CXT_TOAST_NOTIFY_CLIPBOARD,			settings.toast.notify_clipboard);
 		chk(IDM_CXT_TOAST_PLACEMENT_CENTER,			settings.toast.placement		== Settings::ToastPlacement::center);
 		chk(IDM_CXT_TOAST_PLACEMENT_LEFT_TOP,		settings.toast.placement		== Settings::ToastPlacement::left_top);
@@ -1323,18 +1450,21 @@ struct Menu {
 		chk(IDM_CXT_COMMAND_LDBLCLK_FOLLOW_CURSOR,	settings.commands.left_dblclk	== Settings::CommonCommand::toggle_follow_cursor);
 		chk(IDM_CXT_COMMAND_LDBLCLK_SWAP_ZOOM,		settings.commands.left_dblclk	== Settings::CommonCommand::swap_scale_level);
 		chk(IDM_CXT_COMMAND_LDBLCLK_CENTRALIZE,		settings.commands.left_dblclk	== Settings::CommonCommand::centralize);
+		chk(IDM_CXT_COMMAND_LDBLCLK_GRID,			settings.commands.left_dblclk	== Settings::CommonCommand::toggle_grid);
 		chk(IDM_CXT_COMMAND_LDBLCLK_COPY_COLOR,		settings.commands.left_dblclk	== Settings::CommonCommand::copy_color_code);
 		chk(IDM_CXT_COMMAND_LDBLCLK_MENU,			settings.commands.left_dblclk	== Settings::CommonCommand::context_menu);
 		chk(IDM_CXT_COMMAND_RDBLCLK_NONE,			settings.commands.right_dblclk	== Settings::CommonCommand::none);
 		chk(IDM_CXT_COMMAND_RDBLCLK_FOLLOW_CURSOR,	settings.commands.right_dblclk	== Settings::CommonCommand::toggle_follow_cursor);
 		chk(IDM_CXT_COMMAND_RDBLCLK_SWAP_ZOOM,		settings.commands.right_dblclk	== Settings::CommonCommand::swap_scale_level);
 		chk(IDM_CXT_COMMAND_RDBLCLK_CENTRALIZE,		settings.commands.right_dblclk	== Settings::CommonCommand::centralize);
+		chk(IDM_CXT_COMMAND_RDBLCLK_GRID,			settings.commands.right_dblclk	== Settings::CommonCommand::toggle_grid);
 		chk(IDM_CXT_COMMAND_RDBLCLK_COPY_COLOR,		settings.commands.right_dblclk	== Settings::CommonCommand::copy_color_code);
 		chk(IDM_CXT_COMMAND_RDBLCLK_MENU,			settings.commands.right_dblclk	== Settings::CommonCommand::context_menu);
 		chk(IDM_CXT_COMMAND_MCLICK_NONE,			settings.commands.middle_click	== Settings::CommonCommand::none);
 		chk(IDM_CXT_COMMAND_MCLICK_FOLLOW_CURSOR,	settings.commands.middle_click	== Settings::CommonCommand::toggle_follow_cursor);
 		chk(IDM_CXT_COMMAND_MCLICK_SWAP_ZOOM,		settings.commands.middle_click	== Settings::CommonCommand::swap_scale_level);
 		chk(IDM_CXT_COMMAND_MCLICK_CENTRALIZE,		settings.commands.middle_click	== Settings::CommonCommand::centralize);
+		chk(IDM_CXT_COMMAND_MCLICK_GRID,			settings.commands.middle_click	== Settings::CommonCommand::toggle_grid);
 		chk(IDM_CXT_COMMAND_MCLICK_COPY_COLOR,		settings.commands.middle_click	== Settings::CommonCommand::copy_color_code);
 		chk(IDM_CXT_COMMAND_MCLICK_MENU,			settings.commands.middle_click	== Settings::CommonCommand::context_menu);
 
@@ -1346,6 +1476,7 @@ struct Menu {
 		switch (id) {
 		case IDM_CXT_FOLLOW_CURSOR:					return toggle_follow_cursor(hwnd);
 		case IDM_CXT_CENTRALIZE:					return centralize();
+		case IDM_CXT_SHOW_GRID:						return toggle_grid(hwnd);
 		case IDM_CXT_REVERSE_WHEEL:					settings.zoom.reverse_wheel			^= true;										break;
 		case IDM_CXT_PIVOT_CENTER:					settings.zoom.pivot					= Settings::ZoomPivot::center;					break;
 		case IDM_CXT_PIVOT_MOUSE:					settings.zoom.pivot					= Settings::ZoomPivot::cursor;					break;
@@ -1369,6 +1500,7 @@ struct Menu {
 		case IDM_CXT_TIP_RAIL_OCTAGONAL:			settings.tip.rail_mode				= Settings::RailMode::octagonal;				break;
 		case IDM_CXT_TOAST_NOTIFY_SCALE:			settings.toast.notify_scale			^= true;										break;
 		case IDM_CXT_TOAST_NOTIFY_FOLLOW_CURSOR:	settings.toast.notify_follow_cursor	^= true;										break;
+		case IDM_CXT_TOAST_NOTIFY_TOGGLE_GRID:		settings.toast.notify_grid			^= true;										break;
 		case IDM_CXT_TOAST_NOTIFY_CLIPBOARD:		settings.toast.notify_clipboard		^= true;										break;
 		case IDM_CXT_TOAST_PLACEMENT_CENTER:		settings.toast.placement			= Settings::ToastPlacement::center;				break;
 		case IDM_CXT_TOAST_PLACEMENT_LEFT_TOP:		settings.toast.placement			= Settings::ToastPlacement::left_top;			break;
@@ -1382,18 +1514,21 @@ struct Menu {
 		case IDM_CXT_COMMAND_LDBLCLK_FOLLOW_CURSOR:	settings.commands.left_dblclk		= Settings::CommonCommand::toggle_follow_cursor;break;
 		case IDM_CXT_COMMAND_LDBLCLK_SWAP_ZOOM:		settings.commands.left_dblclk		= Settings::CommonCommand::swap_scale_level;	break;
 		case IDM_CXT_COMMAND_LDBLCLK_CENTRALIZE:	settings.commands.left_dblclk		= Settings::CommonCommand::centralize;			break;
+		case IDM_CXT_COMMAND_LDBLCLK_GRID:			settings.commands.left_dblclk		= Settings::CommonCommand::toggle_grid;			break;
 		case IDM_CXT_COMMAND_LDBLCLK_COPY_COLOR:	settings.commands.left_dblclk		= Settings::CommonCommand::copy_color_code;		break;
 		case IDM_CXT_COMMAND_LDBLCLK_MENU:			settings.commands.left_dblclk		= Settings::CommonCommand::context_menu;		break;
 		case IDM_CXT_COMMAND_RDBLCLK_NONE:			settings.commands.right_dblclk		= Settings::CommonCommand::none;				break;
 		case IDM_CXT_COMMAND_RDBLCLK_FOLLOW_CURSOR:	settings.commands.right_dblclk		= Settings::CommonCommand::toggle_follow_cursor;break;
 		case IDM_CXT_COMMAND_RDBLCLK_SWAP_ZOOM:		settings.commands.right_dblclk		= Settings::CommonCommand::swap_scale_level;	break;
 		case IDM_CXT_COMMAND_RDBLCLK_CENTRALIZE:	settings.commands.right_dblclk		= Settings::CommonCommand::centralize;			break;
+		case IDM_CXT_COMMAND_RDBLCLK_GRID:			settings.commands.right_dblclk		= Settings::CommonCommand::toggle_grid;			break;
 		case IDM_CXT_COMMAND_RDBLCLK_COPY_COLOR:	settings.commands.right_dblclk		= Settings::CommonCommand::copy_color_code;		break;
 		case IDM_CXT_COMMAND_RDBLCLK_MENU:			settings.commands.right_dblclk		= Settings::CommonCommand::context_menu;		break;
 		case IDM_CXT_COMMAND_MCLICK_NONE:			settings.commands.middle_click		= Settings::CommonCommand::none;				break;
 		case IDM_CXT_COMMAND_MCLICK_FOLLOW_CURSOR:	settings.commands.middle_click		= Settings::CommonCommand::toggle_follow_cursor;break;
 		case IDM_CXT_COMMAND_MCLICK_SWAP_ZOOM:		settings.commands.middle_click		= Settings::CommonCommand::swap_scale_level;	break;
 		case IDM_CXT_COMMAND_MCLICK_CENTRALIZE:		settings.commands.middle_click		= Settings::CommonCommand::centralize;			break;
+		case IDM_CXT_COMMAND_MCLICK_GRID:			settings.commands.middle_click		= Settings::CommonCommand::toggle_grid;			break;
 		case IDM_CXT_COMMAND_MCLICK_COPY_COLOR:		settings.commands.middle_click		= Settings::CommonCommand::copy_color_code;		break;
 		case IDM_CXT_COMMAND_MCLICK_MENU:			settings.commands.middle_click		= Settings::CommonCommand::context_menu;		break;
 		default: break;
@@ -1406,11 +1541,31 @@ struct Menu {
 ////////////////////////////////
 // AviUtlに渡す関数の定義．
 ////////////////////////////////
-void on_update(int w, int h, void* source)
+inline void on_update(int w, int h, void* source)
 {
 	if (image.update(w, h, source))
 		// notify the loupe of resizing.
 		loupe_state.on_resize(w, h);
+}
+inline bool on_command(HWND hwnd, Settings::CommonCommand cmd, POINT&& pt)
+{
+	if (!image.is_valid()) return false;
+
+	switch (cmd) {
+		using cc = Settings::CommonCommand;
+	case cc::centralize: return centralize();
+	case cc::toggle_follow_cursor: return toggle_follow_cursor(hwnd);
+	case cc::swap_scale_level: return swap_scale_level(hwnd, pt);
+	case cc::toggle_grid: return toggle_grid(hwnd);
+	case cc::copy_color_code: return copy_color_code(hwnd, pt);
+	case cc::context_menu:
+		::ClientToScreen(hwnd, &pt);
+		Menu::popup_menu(hwnd, pt);
+		return false;
+
+	case cc::none:
+	default: return false;
+	}
 }
 
 BOOL func_proc(FilterPlugin* fp, FilterProcInfo* fpip)
@@ -1579,31 +1734,15 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		break;
 
 	// option commands.
-	{
-		Settings::CommonCommand cmd;
-	case WM_LBUTTONDBLCLK: cmd = settings.commands.left_dblclk; goto common_commands;
-	case WM_RBUTTONDBLCLK: cmd = settings.commands.right_dblclk; goto common_commands;
-	case WM_MBUTTONUP:cmd = settings.commands.middle_click; goto common_commands;
-	common_commands:
-		if (image.is_valid()) {
-			auto pt = cursor_pos(lparam);
-			switch (cmd) {
-				using cc = Settings::CommonCommand;
-			case cc::centralize: redraw = centralize(); break;
-			case cc::toggle_follow_cursor: redraw = toggle_follow_cursor(hwnd); break;
-			case cc::swap_scale_level: redraw = swap_scale_level(hwnd, pt); break;
-			case cc::copy_color_code: redraw = copy_color_code(hwnd, pt); break;
-			case cc::context_menu:
-				::ClientToScreen(hwnd, &pt);
-				Menu::popup_menu(hwnd, pt);
-				break;
-			case cc::none:
-			default:
-				break;
-			}
-		}
+	case WM_LBUTTONDBLCLK:
+		redraw = on_command(hwnd, settings.commands.left_dblclk, cursor_pos(lparam));
 		break;
-	}
+	case WM_RBUTTONDBLCLK:
+		redraw = on_command(hwnd, settings.commands.right_dblclk, cursor_pos(lparam));
+		break;
+	case WM_MBUTTONUP:
+		redraw = on_command(hwnd, settings.commands.middle_click, cursor_pos(lparam));
+		break;
 
 	case FilterMessage::MainMouseMove:
 		// mouse move on the main window while wheel is down moves the loupe position.
@@ -1655,12 +1794,12 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.01"
+#define PLUGIN_VERSION	"v1.02-frok1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
 
-extern "C" __declspec(dllexport) FilterPluginDLL * __stdcall GetFilterTable(void)
+extern "C" __declspec(dllexport) FilterPluginDLL* __stdcall GetFilterTable(void)
 {
 	constexpr int initial_width = 256, initial_height = 256;
 
