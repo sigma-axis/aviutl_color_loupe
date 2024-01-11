@@ -374,7 +374,11 @@ https://mit-license.org/
 
 #  Credits
 
-##  aviutl_exedit_sdk v1.2
+##  aviutl_exedit_sdk
+
+https://github.com/ePi5131/aviutl_exedit_sdk
+
+---
 
 1条項BSD
 
