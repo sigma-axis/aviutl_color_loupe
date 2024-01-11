@@ -368,8 +368,8 @@ inline constinit struct Settings {
 	struct {
 		int8_t least_scale_thin = 8;
 		int8_t least_scale_thick = 12;
-		constexpr static int8_t min_least_scale_thin = 6, max_least_scale_thin = loupe_state.zoom.max_scale_level;
-		constexpr static int8_t min_least_scale_thick = 6, max_least_scale_thick = loupe_state.zoom.max_scale_level;
+		constexpr static int8_t min_least_scale_thin = 6, max_least_scale_thin = loupe_state.zoom.max_scale_level + 1;
+		constexpr static int8_t min_least_scale_thick = 6, max_least_scale_thick = loupe_state.zoom.max_scale_level + 1;
 
 		// 0: no grid, 1: thin grid, 2: thick grid.
 		uint8_t grid_thick(int scale_level) const {
@@ -1794,7 +1794,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.10"
+#define PLUGIN_VERSION	"v1.11-beta1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
