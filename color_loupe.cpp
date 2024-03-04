@@ -1544,7 +1544,7 @@ struct Menu {
 ////////////////////////////////
 inline void on_update(int w, int h, void* source)
 {
-	if (image.update(w, h, source))
+	if (source != nullptr && image.update(w, h, source))
 		// notify the loupe of resizing.
 		loupe_state.on_resize(w, h);
 }
@@ -1814,7 +1814,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.13-beta1"
+#define PLUGIN_VERSION	"v1.13-beta2"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
