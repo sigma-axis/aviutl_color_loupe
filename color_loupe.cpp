@@ -1328,7 +1328,12 @@ protected:
 } right_drag;
 
 inline constinit class ObjectDrag : public DragState {
-	int revert_x{}, revert_y{}, last_x{}, last_y{};
+	POINT win2pic(const POINT& p) {
+		RECT rc; ::GetClientRect(hwnd, &rc);
+		auto [x,y] = loupe_state.win2pic(p.x - rc.right / 2.0, p.y - rc.bottom / 2.0);
+		return { static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)) };
+	}
+	POINT revert{}, last{};
 
 	using FilterMessage = FilterPlugin::WindowMessage;
 	constexpr static auto name_exedit = "拡張編集";
@@ -1337,9 +1342,9 @@ inline constinit class ObjectDrag : public DragState {
 	static inline constinit EditHandle* editp = nullptr;
 	static inline constinit bool moved = false;
 
-	static void send_message(UINT message, int x, int y) {
+	static void send_message(UINT message, const POINT& pos) {
 		moved |= exedit_fp->func_WndProc(exedit_fp->hwnd, message, {},
-			static_cast<LPARAM>((x & 0xffff) | (y << 16)), editp, exedit_fp) != FALSE;
+			static_cast<LPARAM>((pos.x & 0xffff) | (pos.y << 16)), editp, exedit_fp) != FALSE;
 	}
 
 public:
@@ -1365,39 +1370,37 @@ protected:
 	{
 		if (!is_valid() || ::GetKeyState(VK_MENU) >= 0) return false;
 
-		auto [x, y] = loupe_state.win2pic(last_point.x, last_point.y);
-		last_x = static_cast<int>(std::floor(x)); last_y = static_cast<int>(std::floor(y));
-		if (0 <= last_x && last_x < image.width() &&
-			0 <= last_y && last_y < image.height()) {
-			revert_x = last_x; revert_y = last_y;
+		last = win2pic(last_point);
+		if (0 <= last.x && last.x < image.width() &&
+			0 <= last.y && last.y < image.height()) {
+			revert = last;
 			::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_SIZEALL)));
 
 			ForceKeyState k{ VK_MENU, false };
-			send_message(FilterMessage::MainMouseDown, last_x, last_y);
+			send_message(FilterMessage::MainMouseDown, last);
 			return true;
 		}
 		return false;
 	}
 	void DragDelta_core(const POINT& curr, bool& redraw) override
 	{
-		auto [x, y] = loupe_state.win2pic(curr.x, curr.y);
-		int curr_x = static_cast<int>(std::floor(x)), curr_y = static_cast<int>(std::floor(y));
-		if (curr_x == last_x && curr_y == last_y) return;
-		last_x = curr_x; last_y = curr_y;
+		auto curr_pic = win2pic(curr);
+		if (curr_pic.x == last.x && curr_pic.y == last.y) return;
+		last = curr_pic;
 
 		ForceKeyState k{ VK_MENU, false };
-		send_message(FilterMessage::MainMouseMove, last_x, last_y);
+		send_message(FilterMessage::MainMouseMove, last);
 	}
 	void DragEnd_core(bool& redraw) override
 	{
 		ForceKeyState k{ VK_MENU, false };
-		send_message(FilterMessage::MainMouseUp, last_x, last_y);
+		send_message(FilterMessage::MainMouseUp, last);
 	}
 	void DragCancel_core(bool& redraw) override
 	{
 		ForceKeyState k{ VK_MENU, false };
-		send_message(FilterMessage::MainMouseMove, revert_x, revert_y);
-		send_message(FilterMessage::MainMouseUp, revert_x, revert_y);
+		send_message(FilterMessage::MainMouseMove, revert);
+		send_message(FilterMessage::MainMouseUp, revert);
 	}
 	void DragAbort_core() override
 	{
@@ -1932,7 +1935,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.20-alpha1"
+#define PLUGIN_VERSION	"v1.20-alpha2"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
