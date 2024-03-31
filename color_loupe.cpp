@@ -1081,16 +1081,22 @@ inline void draw(HWND hwnd)
 class DragState {
 	inline static constinit DragState* current = nullptr;
 
+public:
+	struct RedrawFlags {
+		bool loupe = false;
+		bool main = false;
+	};
+
 protected:
 	HWND hwnd{ nullptr };
 	POINT drag_start{}, last_point{}; // window coordinates.
 
 	// should return true if ready to initiate the drag.
-	virtual bool DragStart_core(bool& redraw) = 0;
-	virtual void DragDelta_core(const POINT& curr, bool& redraw) {}
-	virtual void DragCancel_core(bool& redraw) {}
-	virtual void DragEnd_core(bool& redraw) {}
-	virtual void DragAbort_core() {}
+	virtual bool DragStart_core(RedrawFlags& redraw) = 0;
+	virtual void DragDelta_core(const POINT& curr, RedrawFlags& redraw) {}
+	virtual void DragCancel_core(RedrawFlags& redraw) {}
+	virtual void DragEnd_core(RedrawFlags& redraw) {}
+	virtual void DragAbort_core(RedrawFlags& redraw_main) {}
 
 	// helper function for the "directional snapping" feature.
 	static constexpr std::pair<double, double> snap_rail(double x, double y, Settings::RailMode mode, bool lattice) {
@@ -1125,7 +1131,7 @@ protected:
 
 public:
 	// returns true if the dragging has started.
-	bool DragStart(HWND hwnd, const POINT& drag_start, bool& redraw)
+	bool DragStart(HWND hwnd, const POINT& drag_start, RedrawFlags& redraw)
 	{
 		if (is_dragging()) return false;
 
@@ -1143,7 +1149,7 @@ public:
 		}
 	}
 	// returns true if the dragging operation has been properly processed.
-	static bool DragDelta(const POINT& curr, bool& redraw)
+	static bool DragDelta(const POINT& curr, RedrawFlags& redraw)
 	{
 		if (!is_dragging()) return false;
 
@@ -1152,7 +1158,7 @@ public:
 		return true;
 	}
 	// returns true if the dragging operation has been properly canceled.
-	static bool DragCancel(bool& redraw)
+	static bool DragCancel(RedrawFlags& redraw)
 	{
 		if (!is_dragging()) return false;
 
@@ -1165,7 +1171,7 @@ public:
 		return true;
 	}
 	// returns true if the dragging operation has been properly processed.
-	static bool DragEnd(bool& redraw)
+	static bool DragEnd(RedrawFlags& redraw)
 	{
 		if (!is_dragging()) return false;
 
@@ -1178,11 +1184,11 @@ public:
 		return true;
 	}
 	// returns true if there sure was a dragging state that is now aborted.
-	static bool DragAbort()
+	static bool DragAbort(RedrawFlags& redraw)
 	{
 		if (current == nullptr) return false;
 
-		current->DragAbort_core();
+		current->DragAbort_core(redraw);
 
 		auto tmp = current->hwnd;
 		current->hwnd = nullptr;
@@ -1198,7 +1204,8 @@ public:
 			if (current->hwnd != nullptr &&
 				current->hwnd == ::GetCapture()) return true;
 
-			DragAbort();
+			RedrawFlags f{};
+			DragAbort(f);
 		}
 		return false;
 	}
@@ -1210,7 +1217,7 @@ inline constinit class LeftDrag : public DragState {
 	constexpr static auto& pos = loupe_state.position;
 
 protected:
-	bool DragStart_core(bool& redraw) override
+	bool DragStart_core(RedrawFlags& redraw) override
 	{
 		revert_x = curr_x = pos.x;
 		revert_y = curr_y = pos.y;
@@ -1218,7 +1225,7 @@ protected:
 		::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_HAND)));
 		return true;
 	}
-	void DragDelta_core(const POINT& curr, bool& redraw) override
+	void DragDelta_core(const POINT& curr, RedrawFlags& redraw) override
 	{
 		double dx = curr.x - last_point.x, dy = curr.y - last_point.y;
 		if (dx == 0 && dy == 0) return;
@@ -1237,18 +1244,17 @@ protected:
 
 		if (px == pos.x && py == pos.y) return;
 		pos.x = px; pos.y = py;
-		redraw = true;
+		redraw.loupe = true;
 	}
-	void DragCancel_core(bool& redraw) override
+	void DragCancel_core(RedrawFlags& redraw) override
 	{
 		pos.x = revert_x; pos.y = revert_y;
 		loupe_state.zoom.scale_level = revert_zoom;
-		redraw = true;
+		redraw.loupe = true;
 	}
-	void DragAbort_core() override
+	void DragAbort_core(RedrawFlags& redraw) override
 	{
-		bool b = false;
-		DragCancel_core(b);
+		DragCancel_core(redraw);
 	}
 } left_drag;
 
@@ -1262,18 +1268,18 @@ inline constinit class RightDrag : public DragState {
 	int init_x{}, init_y{};
 
 protected:
-	bool DragStart_core(bool& redraw) override
+	bool DragStart_core(RedrawFlags& redraw) override
 	{
 		switch (settings.tip.mode) {
 			using enum Settings::TipMode;
 		case frail:
 			tip.visible_level = 2;
-			redraw = true;
+			redraw.loupe = true;
 			break;
 		case stationary:
 		case sticky:
 			tip.visible_level = tip.is_visible() ? 0 : 2;
-			redraw = true;
+			redraw.loupe = true;
 			break;
 		case none:
 		default:
@@ -1288,7 +1294,7 @@ protected:
 		::SetCursor(nullptr);
 		return true;
 	}
-	void DragDelta_core(const POINT& curr, bool& redraw) override
+	void DragDelta_core(const POINT& curr, RedrawFlags& redraw) override
 	{
 		auto [dx, dy] = win2pic(curr);
 		std::tie(dx, dy) = snap_rail(dx - (0.5 + init_x), dy - (0.5 + init_y),
@@ -1297,20 +1303,20 @@ protected:
 
 		if (x == tip.x && y == tip.y) return;
 		tip.x = x; tip.y = y;
-		redraw = true;
+		redraw.loupe = true;
 	}
-	void DragCancel_core(bool& redraw) override
+	void DragCancel_core(RedrawFlags& redraw) override
 	{
 		tip.visible_level = 0;
-		redraw = true;
+		redraw.loupe = true;
 	}
-	void DragEnd_core(bool& redraw) override
+	void DragEnd_core(RedrawFlags& redraw) override
 	{
 		switch (settings.tip.mode) {
 			using enum Settings::TipMode;
 		case frail:
 			tip.visible_level = 0;
-			redraw = true;
+			redraw.loupe = true;
 			break;
 		case none:
 		case stationary:
@@ -1320,10 +1326,9 @@ protected:
 		}
 		return;
 	}
-	void DragAbort_core() override
+	void DragAbort_core(RedrawFlags& redraw) override
 	{
-		bool b = false;
-		DragCancel_core(b);
+		DragCancel_core(redraw);
 	}
 } right_drag;
 
@@ -1340,10 +1345,10 @@ inline constinit class ObjectDrag : public DragState {
 
 	static inline constinit FilterPlugin* exedit_fp = nullptr;
 	static inline constinit EditHandle* editp = nullptr;
-	static inline constinit bool moved = false;
+	static inline constinit bool* moved = nullptr;
 
-	static void send_message(UINT message, const POINT& pos) {
-		moved |= exedit_fp->func_WndProc(exedit_fp->hwnd, message, {},
+	static bool send_message(UINT message, const POINT& pos) {
+		return exedit_fp->func_WndProc(exedit_fp->hwnd, message, {},
 			static_cast<LPARAM>((pos.x & 0xffff) | (pos.y << 16)), editp, exedit_fp) != FALSE;
 	}
 
@@ -1362,11 +1367,10 @@ public:
 			}
 	}
 	static bool is_valid() { return exedit_fp != nullptr; }
-	static void on_proc(EditHandle* ep) { editp = ep; moved = false; }
-	static bool redraw_main() { return moved; }
+	static void on_proc(EditHandle* ep) { editp = ep; }
 
 protected:
-	bool DragStart_core(bool& redraw) override
+	bool DragStart_core(RedrawFlags& redraw) override
 	{
 		if (!is_valid() || ::GetKeyState(VK_MENU) >= 0) return false;
 
@@ -1377,35 +1381,34 @@ protected:
 			::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_SIZEALL)));
 
 			ForceKeyState k{ VK_MENU, false };
-			send_message(FilterMessage::MainMouseDown, last);
+			redraw.main |= send_message(FilterMessage::MainMouseDown, last);
 			return true;
 		}
 		return false;
 	}
-	void DragDelta_core(const POINT& curr, bool& redraw) override
+	void DragDelta_core(const POINT& curr, RedrawFlags& redraw) override
 	{
 		auto curr_pic = win2pic(curr);
 		if (curr_pic.x == last.x && curr_pic.y == last.y) return;
 		last = curr_pic;
 
 		ForceKeyState k{ VK_MENU, false };
-		send_message(FilterMessage::MainMouseMove, last);
+		redraw.main |= send_message(FilterMessage::MainMouseMove, last);
 	}
-	void DragEnd_core(bool& redraw) override
+	void DragEnd_core(RedrawFlags& redraw) override
 	{
 		ForceKeyState k{ VK_MENU, false };
-		send_message(FilterMessage::MainMouseUp, last);
+		redraw.main |= send_message(FilterMessage::MainMouseUp, last);
 	}
-	void DragCancel_core(bool& redraw) override
+	void DragCancel_core(RedrawFlags& redraw) override
 	{
 		ForceKeyState k{ VK_MENU, false };
-		send_message(FilterMessage::MainMouseMove, revert);
-		send_message(FilterMessage::MainMouseUp, revert);
+		redraw.main |= send_message(FilterMessage::MainMouseMove, revert);
+		redraw.main |= send_message(FilterMessage::MainMouseUp, revert);
 	}
-	void DragAbort_core() override
+	void DragAbort_core(RedrawFlags& redraw) override
 	{
-		bool b = false;
-		DragCancel_core(b);
+		DragCancel_core(redraw);
 	}
 } obj_drag;
 
@@ -1702,7 +1705,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	constexpr auto cursor_pos = [](LPARAM l) {
 		return POINT{ .x = static_cast<int16_t>(0xffff & l), .y = static_cast<int16_t>(l >> 16) };
 	};
-	bool redraw = false;
+	DragState::RedrawFlags redraw{};
 	obj_drag.on_proc(editp);
 
 	static constinit bool track_mouse_event_sent = false;
@@ -1738,28 +1741,28 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 				fp->exfunc->get_frame_size(editp, &w, &h);
 				on_update(w, h, fp->exfunc->get_disp_pixelp(editp, 0));
 			}
-			redraw = true;
+			redraw.loupe = true;
 		}
-		else ext_obj.deactivate(), DragState::DragAbort();
+		else ext_obj.deactivate(), DragState::DragAbort(redraw);
 		break;
 	case FilterMessage::FileClose:
 		ext_obj.free();
-		DragState::DragAbort();
+		DragState::DragAbort(redraw);
 
 		// clear the window when a file is closed.
 		if (::IsWindowVisible(hwnd) != FALSE)
-			draw_blank(hwnd); // can't use `redraw = true` because exfunc->is_editing() is true at this moment.
+			draw_blank(hwnd); // can't use `redraw.loupe = true` because exfunc->is_editing() is true at this moment.
 		break;
 
 	case WM_PAINT:
-		redraw = true;
+		redraw.loupe = true;
 		break;
 
 	case WM_TIMER:
 		// update of the toast message to dissapear.
 		if (static_cast<UINT_PTR>(wparam) == loupe_state.toast.timer_id()) {
 			loupe_state.toast.on_timeout(hwnd);
-			redraw = image.is_valid();
+			redraw.loupe = image.is_valid();
 		}
 		break;
 
@@ -1799,7 +1802,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		break;
 	case WM_CAPTURECHANGED:
 		// abort dragging.
-		if (DragState::DragAbort()) redraw = true;
+		DragState::DragAbort(redraw);
 		break;
 
 	case WM_MOUSEMOVE:
@@ -1819,7 +1822,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 				loupe_state.tip_state.x = X;
 				loupe_state.tip_state.y = Y;
 
-				redraw = true;
+				redraw.loupe = true;
 			}
 		}
 		if (!track_mouse_event_sent &&
@@ -1835,7 +1838,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		// hide the "sticky" tip.
 		if (settings.tip.mode == Settings::TipMode::sticky && loupe_state.tip_state.is_visible()) {
 			loupe_state.tip_state.visible_level = 1;
-			redraw = true;
+			redraw.loupe = true;
 		}
 		break;
 
@@ -1855,19 +1858,19 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 				oy = pt.y - rc.bottom / 2.0;
 			}
 			if (apply_zoom(hwnd, loupe_state.zoom.scale_level + delta, ox, oy))
-				redraw = true;
+				redraw.loupe = true;
 		}
 		break;
 
 	// option commands.
 	case WM_LBUTTONDBLCLK:
-		redraw = on_command(hwnd, settings.commands.left_dblclk, cursor_pos(lparam));
+		redraw.loupe = on_command(hwnd, settings.commands.left_dblclk, cursor_pos(lparam));
 		break;
 	case WM_RBUTTONDBLCLK:
-		redraw = on_command(hwnd, settings.commands.right_dblclk, cursor_pos(lparam));
+		redraw.loupe = on_command(hwnd, settings.commands.right_dblclk, cursor_pos(lparam));
 		break;
 	case WM_MBUTTONUP:
-		redraw = on_command(hwnd, settings.commands.middle_click, cursor_pos(lparam));
+		redraw.loupe = on_command(hwnd, settings.commands.middle_click, cursor_pos(lparam));
 		break;
 
 	case FilterMessage::MainMouseMove:
@@ -1879,7 +1882,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 			loupe_state.position.y = 0.5 + static_cast<double>(pt.y);
 			loupe_state.position.clamp(image.width(), image.height());
 
-			redraw = ::IsWindowVisible(hwnd) != FALSE;
+			redraw.loupe = ::IsWindowVisible(hwnd) != FALSE;
 		}
 		break;
 
@@ -1887,7 +1890,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		// menu commands.
 		if (image.is_valid()) {
 			if ((wparam >> 16) == 0 && lparam == 0) // criteria for the menu commands.
-				redraw = Menu::on_menu_command(hwnd, wparam & 0xffff) &&
+				redraw.loupe = Menu::on_menu_command(hwnd, wparam & 0xffff) &&
 					::IsWindowVisible(hwnd) != FALSE;
 		}
 		break;
@@ -1905,7 +1908,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		break;
 	}
 
-	if (redraw) {
+	if (redraw.loupe) {
 		// when redrawing is required, proccess here.
 		// returning TRUE from this function may cause flickering in the main window.
 		if (image.is_valid() &&
@@ -1913,7 +1916,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		else draw_blank(hwnd);
 	}
 
-	return obj_drag.redraw_main() ? TRUE : FALSE;
+	return redraw.main ? TRUE : FALSE;
 }
 
 
@@ -1935,7 +1938,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.20-alpha2"
+#define PLUGIN_VERSION	"v1.20-alpha3"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
