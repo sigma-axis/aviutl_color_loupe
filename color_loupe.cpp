@@ -33,6 +33,39 @@ using namespace AviUtl;
 HMODULE this_dll = nullptr;
 
 ////////////////////////////////
+// Windows API 利用の補助関数．
+////////////////////////////////
+
+// キー入力認識をちょろまかす補助クラス．
+class ForceKeyState {
+	static auto force_key_state(short vkey, uint8_t state)
+	{
+		uint8_t states[256]; std::ignore = ::GetKeyboardState(states);
+		std::swap(state, states[vkey]); ::SetKeyboardState(states);
+		return state;
+	}
+
+	constexpr static auto state(bool pressed) { return pressed ? key_pressed : key_released; }
+
+	const short vkey;
+	const uint8_t prev;
+
+public:
+	constexpr static uint8_t key_released = 0, key_pressed = 0x80;
+	constexpr static int vkey_invalid = -1;
+
+	ForceKeyState(short vkey, bool pressed) : ForceKeyState(vkey, state(pressed)) {}
+	ForceKeyState(short vkey, uint8_t state) :
+		vkey{ 0 <= vkey && vkey < 256 ? vkey : vkey_invalid },
+		prev{ this->vkey != vkey_invalid ? force_key_state(this->vkey, state) : uint8_t{} } {}
+	~ForceKeyState() { if (vkey != vkey_invalid) force_key_state(vkey, prev); }
+
+	ForceKeyState(const ForceKeyState&) = delete;
+	ForceKeyState& operator=(const ForceKeyState&) = delete;
+};
+
+
+////////////////////////////////
 // Win32標準の COLORREF を拡張．
 ////////////////////////////////
 union Color {
@@ -1294,6 +1327,85 @@ protected:
 	}
 } right_drag;
 
+inline constinit class ObjectDrag : public DragState {
+	int revert_x{}, revert_y{}, last_x{}, last_y{};
+
+	using FilterMessage = FilterPlugin::WindowMessage;
+	constexpr static auto name_exedit = "拡張編集";
+
+	static inline constinit FilterPlugin* exedit_fp = nullptr;
+	static inline constinit EditHandle* editp = nullptr;
+	static inline constinit bool moved = false;
+
+	static void send_message(UINT message, int x, int y) {
+		moved |= exedit_fp->func_WndProc(exedit_fp->hwnd, message, {},
+			static_cast<LPARAM>((x & 0xffff) | (y << 16)), editp, exedit_fp) != FALSE;
+	}
+
+public:
+	static void init(FilterPlugin* this_fp) {
+			if (exedit_fp != nullptr) return;
+
+			SysInfo si; this_fp->exfunc->get_sys_info(nullptr, &si);
+			for (int i = 0; i < si.filter_n; i++) {
+				auto that_fp = this_fp->exfunc->get_filterp(i);
+				if (that_fp->name != nullptr &&
+					0 == std::strcmp(that_fp->name, name_exedit)) {
+					exedit_fp = that_fp;
+					return;
+				}
+			}
+	}
+	static bool is_valid() { return exedit_fp != nullptr; }
+	static void on_proc(EditHandle* ep) { editp = ep; moved = false; }
+	static bool redraw_main() { return moved; }
+
+protected:
+	bool DragStart_core(bool& redraw) override
+	{
+		if (!is_valid() || ::GetKeyState(VK_MENU) >= 0) return false;
+
+		auto [x, y] = loupe_state.win2pic(last_point.x, last_point.y);
+		last_x = static_cast<int>(std::floor(x)); last_y = static_cast<int>(std::floor(y));
+		if (0 <= last_x && last_x < image.width() &&
+			0 <= last_y && last_y < image.height()) {
+			revert_x = last_x; revert_y = last_y;
+			::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_SIZEALL)));
+
+			ForceKeyState k{ VK_MENU, false };
+			send_message(FilterMessage::MainMouseDown, last_x, last_y);
+			return true;
+		}
+		return false;
+	}
+	void DragDelta_core(const POINT& curr, bool& redraw) override
+	{
+		auto [x, y] = loupe_state.win2pic(curr.x, curr.y);
+		int curr_x = static_cast<int>(std::floor(x)), curr_y = static_cast<int>(std::floor(y));
+		if (curr_x == last_x && curr_y == last_y) return;
+		last_x = curr_x; last_y = curr_y;
+
+		ForceKeyState k{ VK_MENU, false };
+		send_message(FilterMessage::MainMouseMove, last_x, last_y);
+	}
+	void DragEnd_core(bool& redraw) override
+	{
+		ForceKeyState k{ VK_MENU, false };
+		send_message(FilterMessage::MainMouseUp, last_x, last_y);
+	}
+	void DragCancel_core(bool& redraw) override
+	{
+		ForceKeyState k{ VK_MENU, false };
+		send_message(FilterMessage::MainMouseMove, revert_x, revert_y);
+		send_message(FilterMessage::MainMouseUp, revert_x, revert_y);
+	}
+	void DragAbort_core() override
+	{
+		bool b = false;
+		DragCancel_core(b);
+	}
+} obj_drag;
+
 
 ////////////////////////////////
 // その他コマンド．
@@ -1588,6 +1700,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		return POINT{ .x = static_cast<int16_t>(0xffff & l), .y = static_cast<int16_t>(l >> 16) };
 	};
 	bool redraw = false;
+	obj_drag.on_proc(editp);
 
 	static constinit bool track_mouse_event_sent = false;
 	switch (message) {
@@ -1599,6 +1712,9 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 
 		// disable IME.
 		::ImmReleaseContext(hwnd, ::ImmAssociateContext(hwnd, nullptr));
+
+		// find exedit.
+		obj_drag.init(fp);
 		break;
 
 	case FilterMessage::Exit:
@@ -1650,7 +1766,9 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		if (image.is_valid()) {
 			if (::GetKeyState(VK_RBUTTON) >= 0 && ::GetKeyState(VK_MBUTTON) >= 0)
 				// start dragging to move the target point.
-				left_drag.DragStart(hwnd, cursor_pos(lparam), redraw);
+				if (auto pos = cursor_pos(lparam);
+					!obj_drag.DragStart(hwnd, pos, redraw))
+					left_drag.DragStart(hwnd, pos, redraw);
 		}
 		break;
 	case WM_RBUTTONDOWN:
@@ -1792,7 +1910,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		else draw_blank(hwnd);
 	}
 
-	return FALSE;
+	return obj_drag.redraw_main() ? TRUE : FALSE;
 }
 
 
@@ -1814,7 +1932,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.13"
+#define PLUGIN_VERSION	"v1.20-alpha1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
