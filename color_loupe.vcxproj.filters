@@ -34,6 +34,15 @@
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="color_abgr.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="key_states.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="drag_states.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="color_loupe.rc">

@@ -113,6 +113,9 @@
     <None Include="color_loupe.def" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="color_abgr.hpp" />
+    <ClInclude Include="drag_states.hpp" />
+    <ClInclude Include="key_states.hpp" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
