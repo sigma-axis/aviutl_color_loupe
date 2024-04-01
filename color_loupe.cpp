@@ -21,8 +21,6 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #pragma comment(lib, "imm32")
-#include <CommCtrl.h>
-#pragma comment(lib, "comctl32")
 
 using byte = uint8_t;
 #include <aviutl/filter.hpp>
@@ -130,6 +128,143 @@ public:
 	constexpr static uint16_t max_luma = 65535;
 };
 static_assert(sizeof(Color) == 4);
+
+
+////////////////////////////////
+// ドラッグ操作の基底クラス．
+////////////////////////////////
+enum class RailMode : uint8_t {
+	none = 0, cross = 1, octagonal = 2,
+};
+template<class Context>
+class DragStateBase {
+	inline static constinit DragStateBase* current = nullptr;
+
+public:
+	using context = Context;
+
+protected:
+	HWND hwnd{ nullptr };
+	POINT drag_start{}, last_point{}; // window coordinates.
+
+	// should return true if ready to initiate the drag.
+	virtual bool DragStart_core(context& cxt) = 0;
+	virtual void DragDelta_core(const POINT& curr, context& cxt) {}
+	virtual void DragCancel_core(context& cxt) {}
+	virtual void DragEnd_core(context& cxt) {}
+	virtual void DragAbort_core(context& cxt) {}
+
+	// helper function for the "directional snapping" feature.
+	static constexpr std::pair<double, double> snap_rail(double x, double y, RailMode mode, bool lattice) {
+		double lx = x < 0 ? -x : x, ly = y < 0 ? -y : y; //double lx = std::abs(x), ly = std::abs(y);
+		// std::abs() isn't constexpr at this moment of writing this code...
+		switch (mode) {
+		case RailMode::cross:
+			// '+'-shape.
+			(lx < ly ? x : y) = 0;
+			break;
+		case RailMode::octagonal:
+		{
+			// combination of '+' and 'X'-shape.
+			constexpr double thr = 0.41421356237309504880168872420969807857; // tan(pi/8)
+			// std::tan() isn't constexpr at this moment of writing this code...
+			if (lx < thr * ly) x = 0;
+			else if (thr * lx > ly) y = 0;
+			else {
+				lx = (lx + ly) / 2;
+				x = x < 0 ? -lx : lx;
+				y = y < 0 ? -lx : lx;
+			}
+			break;
+		}
+		case RailMode::none:
+		default:
+			break;
+		}
+		if (lattice) { x = std::round(x); y = std::round(y); }
+		return { x, y };
+	}
+
+public:
+	// returns true if the dragging has started.
+	bool DragStart(HWND hwnd, const POINT& drag_start, context& cxt)
+	{
+		if (is_dragging(cxt)) return false;
+
+		this->hwnd = hwnd;
+		this->drag_start = this->last_point = drag_start;
+
+		if (this->DragStart_core(cxt)) {
+			current = this;
+			::SetCapture(hwnd);
+			return true;
+		}
+		else {
+			this->hwnd = nullptr;
+			return false;
+		}
+	}
+	// returns true if the dragging operation has been properly processed.
+	static bool DragDelta(const POINT& curr, context& cxt)
+	{
+		if (!is_dragging(cxt)) return false;
+
+		current->DragDelta_core(curr, cxt);
+		current->last_point = curr;
+		return true;
+	}
+	// returns true if the dragging operation has been properly canceled.
+	static bool DragCancel(context& cxt)
+	{
+		if (!is_dragging(cxt)) return false;
+
+		current->DragCancel_core(cxt);
+
+		current->hwnd = nullptr;
+		current = nullptr;
+
+		::ReleaseCapture();
+		return true;
+	}
+	// returns true if the dragging operation has been properly processed.
+	static bool DragEnd(context& cxt)
+	{
+		if (!is_dragging(cxt)) return false;
+
+		current->DragEnd_core(cxt);
+
+		current->hwnd = nullptr;
+		current = nullptr;
+
+		::ReleaseCapture();
+		return true;
+	}
+	// returns true if there sure was a dragging state that is now aborted.
+	static bool DragAbort(context& cxt)
+	{
+		if (current == nullptr) return false;
+
+		current->DragAbort_core(cxt);
+
+		auto tmp = current->hwnd;
+		current->hwnd = nullptr;
+		current = nullptr;
+
+		if (tmp != nullptr && ::GetCapture() == tmp)
+			::ReleaseCapture();
+		return true;
+	}
+	// verifies the dragging status, might abort if the window is no longer captured.
+	static bool is_dragging(context& cxt) {
+		if (current != nullptr) {
+			if (current->hwnd != nullptr &&
+				current->hwnd == ::GetCapture()) return true;
+
+			DragAbort(cxt);
+		}
+		return false;
+	}
+};
 
 
 ////////////////////////////////
@@ -305,9 +440,6 @@ inline constinit struct LoupeState {
 // 設定項目．
 ////////////////////////////////
 inline constinit struct Settings {
-	enum class RailMode : uint8_t {
-		none = 0, cross = 1, octagonal = 2,
-	};
 	enum class ZoomPivot : uint8_t {
 		center = 0, cursor = 1,
 	};
@@ -1076,138 +1208,27 @@ inline void draw(HWND hwnd)
 
 
 ////////////////////////////////
-// ドラッグ操作．
+// ドラッグ操作実装．
 ////////////////////////////////
-class DragState {
-	inline static constinit DragState* current = nullptr;
-
-public:
-	struct ProcCxt {
-		EditHandle* editp;
-		bool redraw_loupe = false;
-		bool redraw_main = false;
-	};
-
+struct DragCxt {
+	EditHandle* editp;
+	WPARAM wparam;
+	bool redraw_loupe;
+	bool redraw_main;
+};
+class DragState : public DragStateBase<DragCxt> {
 protected:
-	HWND hwnd{ nullptr };
-	POINT drag_start{}, last_point{}; // window coordinates.
-
-	// should return true if ready to initiate the drag.
-	virtual bool DragStart_core(ProcCxt& cxt) = 0;
-	virtual void DragDelta_core(const POINT& curr, ProcCxt& cxt) {}
-	virtual void DragCancel_core(ProcCxt& cxt) {}
-	virtual void DragEnd_core(ProcCxt& cxt) {}
-	virtual void DragAbort_core(ProcCxt& cxt) {}
-
-	// helper function for the "directional snapping" feature.
-	static constexpr std::pair<double, double> snap_rail(double x, double y, Settings::RailMode mode, bool lattice) {
-		double lx = x < 0 ? -x : x, ly = y < 0 ? -y : y; //double lx = std::abs(x), ly = std::abs(y);
-		// std::abs() isn't constexpr at this moment of writing this code...
-		switch (mode) {
-		case Settings::RailMode::cross:
-			// '+'-shape.
-			(lx < ly ? x : y) = 0;
-			break;
-		case Settings::RailMode::octagonal:
-		{
-			// combination of '+' and 'X'-shape.
-			constexpr double thr = 0.41421356237309504880168872420969807857; // tan(pi/8)
-			// std::tan() isn't constexpr at this moment of writing this code...
-			if (lx < thr * ly) x = 0;
-			else if (thr * lx > ly) y = 0;
-			else {
-				lx = (lx + ly) / 2;
-				x = x < 0 ? -lx : lx;
-				y = y < 0 ? -lx : lx;
-			}
-			break;
-		}
-		case Settings::RailMode::none:
-		default:
-			break;
-		}
-		if (lattice) { x = std::round(x); y = std::round(y); }
-		return { x, y };
+	std::pair<double, double> win2pic(const POINT& p) {
+		RECT rc; ::GetClientRect(hwnd, &rc);
+		return loupe_state.win2pic(p.x - rc.right / 2.0, p.y - rc.bottom / 2.0);
 	}
-
-public:
-	// returns true if the dragging has started.
-	bool DragStart(HWND hwnd, const POINT& drag_start, ProcCxt& cxt)
+	POINT win2pic_i(const POINT& p) {
+		auto [x, y] = win2pic(p);
+		return { .x = static_cast<int>(std::floor(x)), .y = static_cast<int>(std::floor(y)) };
+	}
+	void DragAbort_core(context& cxt) override
 	{
-		if (is_dragging(cxt)) return false;
-
-		this->hwnd = hwnd;
-		this->drag_start = this->last_point = drag_start;
-
-		if (this->DragStart_core(cxt)) {
-			current = this;
-			::SetCapture(hwnd);
-			return true;
-		}
-		else {
-			this->hwnd = nullptr;
-			return false;
-		}
-	}
-	// returns true if the dragging operation has been properly processed.
-	static bool DragDelta(const POINT& curr, ProcCxt& cxt)
-	{
-		if (!is_dragging(cxt)) return false;
-
-		current->DragDelta_core(curr, cxt);
-		current->last_point = curr;
-		return true;
-	}
-	// returns true if the dragging operation has been properly canceled.
-	static bool DragCancel(ProcCxt& cxt)
-	{
-		if (!is_dragging(cxt)) return false;
-
-		current->DragCancel_core(cxt);
-
-		current->hwnd = nullptr;
-		current = nullptr;
-
-		::ReleaseCapture();
-		return true;
-	}
-	// returns true if the dragging operation has been properly processed.
-	static bool DragEnd(ProcCxt& cxt)
-	{
-		if (!is_dragging(cxt)) return false;
-
-		current->DragEnd_core(cxt);
-
-		current->hwnd = nullptr;
-		current = nullptr;
-
-		::ReleaseCapture();
-		return true;
-	}
-	// returns true if there sure was a dragging state that is now aborted.
-	static bool DragAbort(ProcCxt& cxt)
-	{
-		if (current == nullptr) return false;
-
-		current->DragAbort_core(cxt);
-
-		auto tmp = current->hwnd;
-		current->hwnd = nullptr;
-		current = nullptr;
-
-		if (tmp != nullptr && ::GetCapture() == tmp)
-			::ReleaseCapture();
-		return true;
-	}
-	// verifies the dragging status, might abort if the window is no longer captured.
-	static bool is_dragging(ProcCxt& cxt) {
-		if (current != nullptr) {
-			if (current->hwnd != nullptr &&
-				current->hwnd == ::GetCapture()) return true;
-
-			DragAbort(cxt);
-		}
-		return false;
+		DragCancel_core(cxt);
 	}
 };
 
@@ -1217,7 +1238,7 @@ inline constinit class LeftDrag : public DragState {
 	constexpr static auto& pos = loupe_state.position;
 
 protected:
-	bool DragStart_core(ProcCxt& cxt) override
+	bool DragStart_core(context& cxt) override
 	{
 		revert_x = curr_x = pos.x;
 		revert_y = curr_y = pos.y;
@@ -1225,7 +1246,7 @@ protected:
 		::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_HAND)));
 		return true;
 	}
-	void DragDelta_core(const POINT& curr, ProcCxt& cxt) override
+	void DragDelta_core(const POINT& curr, context& cxt) override
 	{
 		double dx = curr.x - last_point.x, dy = curr.y - last_point.y;
 		if (dx == 0 && dy == 0) return;
@@ -1234,7 +1255,7 @@ protected:
 		curr_x -= s * dx; curr_y -= s * dy;
 
 		std::tie(dx, dy) = snap_rail(curr_x - revert_x, curr_y - revert_y,
-			::GetKeyState(VK_SHIFT) < 0 ? settings.positioning.rail_mode : Settings::RailMode::none,
+			(cxt.wparam & MK_SHIFT) != 0 ? settings.positioning.rail_mode : RailMode::none,
 			settings.positioning.lattice);
 		double px = revert_x, py = revert_y;
 		if (settings.positioning.lattice)
@@ -1246,29 +1267,20 @@ protected:
 		pos.x = px; pos.y = py;
 		cxt.redraw_loupe = true;
 	}
-	void DragCancel_core(ProcCxt& cxt) override
+	void DragCancel_core(context& cxt) override
 	{
 		pos.x = revert_x; pos.y = revert_y;
 		loupe_state.zoom.scale_level = revert_zoom;
 		cxt.redraw_loupe = true;
 	}
-	void DragAbort_core(ProcCxt& cxt) override
-	{
-		DragCancel_core(cxt);
-	}
 } left_drag;
 
 inline constinit class RightDrag : public DragState {
 	constexpr static auto& tip = loupe_state.tip_state;
-
-	std::pair<double, double> win2pic(const POINT& p) {
-		RECT rc; ::GetClientRect(hwnd, &rc);
-		return loupe_state.win2pic(p.x - rc.right / 2.0, p.y - rc.bottom / 2.0);
-	}
-	int init_x{}, init_y{};
+	POINT init{};
 
 protected:
-	bool DragStart_core(ProcCxt& cxt) override
+	bool DragStart_core(context& cxt) override
 	{
 		switch (settings.tip.mode) {
 			using enum Settings::TipMode;
@@ -1288,29 +1300,28 @@ protected:
 		}
 		if (!tip.is_visible()) return false;
 
-		auto [x, y] = win2pic(drag_start);
-		tip.x = init_x = static_cast<int>(std::floor(x));
-		tip.y = init_y = static_cast<int>(std::floor(y));
+		init = win2pic_i(drag_start);
+		tip.x = init.x; tip.y = init.y;
 		::SetCursor(nullptr);
 		return true;
 	}
-	void DragDelta_core(const POINT& curr, ProcCxt& cxt) override
+	void DragDelta_core(const POINT& curr, context& cxt) override
 	{
 		auto [dx, dy] = win2pic(curr);
-		std::tie(dx, dy) = snap_rail(dx - (0.5 + init_x), dy - (0.5 + init_y),
-			::GetKeyState(VK_SHIFT) < 0 ? settings.tip.rail_mode : Settings::RailMode::none, true);
-		auto x = init_x + static_cast<int>(dx), y = init_y + static_cast<int>(dy);
+		std::tie(dx, dy) = snap_rail(dx - (0.5 + init.x), dy - (0.5 + init.y),
+			(cxt.wparam & MK_SHIFT) != 0 ? settings.tip.rail_mode : RailMode::none, true);
+		auto x = init.x + static_cast<int>(dx), y = init.y + static_cast<int>(dy);
 
 		if (x == tip.x && y == tip.y) return;
 		tip.x = x; tip.y = y;
 		cxt.redraw_loupe = true;
 	}
-	void DragCancel_core(ProcCxt& cxt) override
+	void DragCancel_core(context& cxt) override
 	{
 		tip.visible_level = 0;
 		cxt.redraw_loupe = true;
 	}
-	void DragEnd_core(ProcCxt& cxt) override
+	void DragEnd_core(context& cxt) override
 	{
 		switch (settings.tip.mode) {
 			using enum Settings::TipMode;
@@ -1326,27 +1337,26 @@ protected:
 		}
 		return;
 	}
-	void DragAbort_core(ProcCxt& cxt) override
-	{
-		DragCancel_core(cxt);
-	}
 } right_drag;
 
 inline constinit class ObjectDrag : public DragState {
-	POINT win2pic(const POINT& p) {
-		RECT rc; ::GetClientRect(hwnd, &rc);
-		auto [x,y] = loupe_state.win2pic(p.x - rc.right / 2.0, p.y - rc.bottom / 2.0);
-		return { static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)) };
-	}
 	POINT revert{}, last{};
 
 	using FilterMessage = FilterPlugin::WindowMessage;
 	constexpr static auto name_exedit = "拡張編集";
 
 	static inline constinit FilterPlugin* exedit_fp = nullptr;
-	static void send_message(ProcCxt& cxt, UINT message, const POINT& pos) {
-		cxt.redraw_main |= exedit_fp->func_WndProc(exedit_fp->hwnd, message, {},
-			static_cast<LPARAM>((pos.x & 0xffff) | (pos.y << 16)), cxt.editp, exedit_fp) != FALSE;
+	static void send_message(context& cxt, UINT message, const POINT& pos, WPARAM btn)
+	{
+		constexpr auto force_btn = [](WPARAM wparam, WPARAM btn) {
+			constexpr WPARAM all_btns = MK_LBUTTON | MK_MBUTTON | MK_RBUTTON | MK_XBUTTON1 | MK_XBUTTON2;
+			return (wparam & ~all_btns) | btn;
+		};
+		constexpr auto code_pos = [](auto x, auto y) {
+			return static_cast<LPARAM>((x & 0xffff) | (y << 16));
+		};
+		cxt.redraw_main |= exedit_fp->func_WndProc(exedit_fp->hwnd, message,
+			force_btn(cxt.wparam, btn), code_pos(pos.x, pos.y), cxt.editp, exedit_fp) != FALSE;
 	}
 
 public:
@@ -1366,45 +1376,43 @@ public:
 	static bool is_valid() { return exedit_fp != nullptr; }
 
 protected:
-	bool DragStart_core(ProcCxt& cxt) override
+	bool DragStart_core(context& cxt) override
 	{
 		if (!is_valid() || ::GetKeyState(VK_MENU) >= 0) return false;
 
-		last = win2pic(last_point);
+		last = win2pic_i(last_point);
 		if (0 <= last.x && last.x < image.width() &&
 			0 <= last.y && last.y < image.height()) {
 			revert = last;
 			::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_SIZEALL)));
 
 			ForceKeyState k{ VK_MENU, false };
-			send_message(cxt, FilterMessage::MainMouseDown, last);
+			send_message(cxt, FilterMessage::MainMouseDown, last, MK_LBUTTON);
 			return true;
 		}
 		return false;
 	}
-	void DragDelta_core(const POINT& curr, ProcCxt& cxt) override
+	void DragDelta_core(const POINT& curr, context& cxt) override
 	{
-		auto curr_pic = win2pic(curr);
-		if (curr_pic.x == last.x && curr_pic.y == last.y) return;
-		last = curr_pic;
+		auto pt = win2pic_i(curr);
+		if (pt.x == last.x && pt.y == last.y) return;
+		last = pt;
 
 		ForceKeyState k{ VK_MENU, false };
-		send_message(cxt, FilterMessage::MainMouseMove, last);
+		send_message(cxt, FilterMessage::MainMouseMove, last, MK_LBUTTON);
 	}
-	void DragEnd_core(ProcCxt& cxt) override
+	void DragEnd_core(context& cxt) override
 	{
 		ForceKeyState k{ VK_MENU, false };
-		send_message(cxt, FilterMessage::MainMouseUp, last);
+		send_message(cxt, FilterMessage::MainMouseUp, last, 0);
 	}
-	void DragCancel_core(ProcCxt& cxt) override
+	void DragCancel_core(context& cxt) override
 	{
+		cxt.wparam = 0;
+
 		ForceKeyState k{ VK_MENU, false };
-		send_message(cxt, FilterMessage::MainMouseMove, revert);
-		send_message(cxt, FilterMessage::MainMouseUp, revert);
-	}
-	void DragAbort_core(ProcCxt& cxt) override
-	{
-		DragCancel_core(cxt);
+		send_message(cxt, FilterMessage::MainMouseMove, revert, MK_LBUTTON);
+		send_message(cxt, FilterMessage::MainMouseUp, revert, 0);
 	}
 } obj_drag;
 
@@ -1539,16 +1547,16 @@ struct Menu {
 		chk(IDM_CXT_PIVOT_SWAP_CENTER,				settings.zoom.pivot_swap		== Settings::ZoomPivot::center);
 		chk(IDM_CXT_PIVOT_SWAP_MOUSE,				settings.zoom.pivot_swap		== Settings::ZoomPivot::cursor);
 		chk(IDM_CXT_LATTICE,						settings.positioning.lattice);
-		chk(IDM_CXT_RAIL_NONE,						settings.positioning.rail_mode	== Settings::RailMode::none);
-		chk(IDM_CXT_RAIL_CROSS,						settings.positioning.rail_mode	== Settings::RailMode::cross);
-		chk(IDM_CXT_RAIL_OCTAGONAL,					settings.positioning.rail_mode	== Settings::RailMode::octagonal);
+		chk(IDM_CXT_RAIL_NONE,						settings.positioning.rail_mode	== RailMode::none);
+		chk(IDM_CXT_RAIL_CROSS,						settings.positioning.rail_mode	== RailMode::cross);
+		chk(IDM_CXT_RAIL_OCTAGONAL,					settings.positioning.rail_mode	== RailMode::octagonal);
 		chk(IDM_CXT_TIP_MODE_NONE,					settings.tip.mode				== Settings::TipMode::none);
 		chk(IDM_CXT_TIP_MODE_FRAIL,					settings.tip.mode				== Settings::TipMode::frail);
 		chk(IDM_CXT_TIP_MODE_STATIONARY,			settings.tip.mode				== Settings::TipMode::stationary);
 		chk(IDM_CXT_TIP_MODE_STICKY,				settings.tip.mode				== Settings::TipMode::sticky);
-		chk(IDM_CXT_TIP_RAIL_NONE,					settings.tip.rail_mode			== Settings::RailMode::none);
-		chk(IDM_CXT_TIP_RAIL_CROSS,					settings.tip.rail_mode			== Settings::RailMode::cross);
-		chk(IDM_CXT_TIP_RAIL_OCTAGONAL,				settings.tip.rail_mode			== Settings::RailMode::octagonal);
+		chk(IDM_CXT_TIP_RAIL_NONE,					settings.tip.rail_mode			== RailMode::none);
+		chk(IDM_CXT_TIP_RAIL_CROSS,					settings.tip.rail_mode			== RailMode::cross);
+		chk(IDM_CXT_TIP_RAIL_OCTAGONAL,				settings.tip.rail_mode			== RailMode::octagonal);
 		chk(IDM_CXT_TOAST_NOTIFY_SCALE,				settings.toast.notify_scale);
 		chk(IDM_CXT_TOAST_NOTIFY_FOLLOW_CURSOR,		settings.toast.notify_follow_cursor);
 		chk(IDM_CXT_TOAST_NOTIFY_TOGGLE_GRID,		settings.toast.notify_grid);
@@ -1600,9 +1608,9 @@ struct Menu {
 		case IDM_CXT_PIVOT_SWAP_CENTER:				settings.zoom.pivot_swap			= Settings::ZoomPivot::center;					break;
 		case IDM_CXT_PIVOT_SWAP_MOUSE:				settings.zoom.pivot_swap			= Settings::ZoomPivot::cursor;					break;
 		case IDM_CXT_LATTICE:						settings.positioning.lattice		^= true;										break;
-		case IDM_CXT_RAIL_NONE:						settings.positioning.rail_mode		= Settings::RailMode::none;						break;
-		case IDM_CXT_RAIL_CROSS:					settings.positioning.rail_mode		= Settings::RailMode::cross;					break;
-		case IDM_CXT_RAIL_OCTAGONAL:				settings.positioning.rail_mode		= Settings::RailMode::octagonal;				break;
+		case IDM_CXT_RAIL_NONE:						settings.positioning.rail_mode		= RailMode::none;								break;
+		case IDM_CXT_RAIL_CROSS:					settings.positioning.rail_mode		= RailMode::cross;								break;
+		case IDM_CXT_RAIL_OCTAGONAL:				settings.positioning.rail_mode		= RailMode::octagonal;							break;
 		case IDM_CXT_TIP_MODE_NONE:					settings.tip.mode					= Settings::TipMode::none;						break;
 		case IDM_CXT_TIP_MODE_FRAIL:				settings.tip.mode					= Settings::TipMode::frail;						goto hide_tip_and_redraw;
 		case IDM_CXT_TIP_MODE_STATIONARY:			settings.tip.mode					= Settings::TipMode::stationary;				goto hide_tip_and_redraw;
@@ -1610,9 +1618,9 @@ struct Menu {
 		hide_tip_and_redraw:
 			loupe_state.tip_state.visible_level = 0;
 			return true;
-		case IDM_CXT_TIP_RAIL_NONE:					settings.tip.rail_mode				= Settings::RailMode::none;						break;
-		case IDM_CXT_TIP_RAIL_CROSS:				settings.tip.rail_mode				= Settings::RailMode::cross;					break;
-		case IDM_CXT_TIP_RAIL_OCTAGONAL:			settings.tip.rail_mode				= Settings::RailMode::octagonal;				break;
+		case IDM_CXT_TIP_RAIL_NONE:					settings.tip.rail_mode				= RailMode::none;								break;
+		case IDM_CXT_TIP_RAIL_CROSS:				settings.tip.rail_mode				= RailMode::cross;								break;
+		case IDM_CXT_TIP_RAIL_OCTAGONAL:			settings.tip.rail_mode				= RailMode::octagonal;							break;
 		case IDM_CXT_TOAST_NOTIFY_SCALE:			settings.toast.notify_scale			^= true;										break;
 		case IDM_CXT_TOAST_NOTIFY_FOLLOW_CURSOR:	settings.toast.notify_follow_cursor	^= true;										break;
 		case IDM_CXT_TOAST_NOTIFY_TOGGLE_GRID:		settings.toast.notify_grid			^= true;										break;
@@ -1701,7 +1709,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	constexpr auto cursor_pos = [](LPARAM l) {
 		return POINT{ .x = static_cast<int16_t>(0xffff & l), .y = static_cast<int16_t>(l >> 16) };
 	};
-	DragState::ProcCxt cxt{ .editp = editp };
+	DragState::context cxt{ .editp = editp, .wparam = wparam, .redraw_loupe = false, .redraw_main = false };
 
 	static constinit bool track_mouse_event_sent = false;
 	switch (message) {
@@ -1715,7 +1723,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 		::ImmReleaseContext(hwnd, ::ImmAssociateContext(hwnd, nullptr));
 
 		// find exedit.
-		obj_drag.init(fp);
+		ObjectDrag::init(fp);
 		break;
 
 	case FilterMessage::Exit:
@@ -1765,7 +1773,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	case WM_LBUTTONDOWN:
 		if (DragState::DragCancel(cxt)) break;
 		if (image.is_valid()) {
-			if (::GetKeyState(VK_RBUTTON) >= 0 && ::GetKeyState(VK_MBUTTON) >= 0)
+			if ((wparam & (MK_RBUTTON | MK_MBUTTON)) == 0)
 				// start dragging to move the target point.
 				if (auto pos = cursor_pos(lparam);
 					!obj_drag.DragStart(hwnd, pos, cxt))
@@ -1775,13 +1783,13 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	case WM_RBUTTONDOWN:
 		if (DragState::DragCancel(cxt)) break;
 		if (image.is_valid()) {
-			if (::GetKeyState(VK_CONTROL) < 0) {
+			if ((wparam & MK_CONTROL) != 0) {
 				// show the context menu when ctrl + right click.
 				auto pt = cursor_pos(lparam);
 				::ClientToScreen(hwnd, &pt);
 				Menu::popup_menu(hwnd, pt);
 			}
-			else if (::GetKeyState(VK_LBUTTON) >= 0 && ::GetKeyState(VK_MBUTTON) >= 0)
+			else if ((wparam & (MK_LBUTTON | MK_MBUTTON)) == 0)
 				// start dragging to show up the info tip.
 				right_drag.DragStart(hwnd, cursor_pos(lparam), cxt);
 		}
@@ -1871,7 +1879,7 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	case FilterMessage::MainMouseMove:
 		// mouse move on the main window while wheel is down moves the loupe position.
 		if (image.is_valid() &&
-			(loupe_state.position.follow_cursor || ::GetKeyState(VK_MBUTTON) < 0)) {
+			(loupe_state.position.follow_cursor || (wparam & MK_MBUTTON) != 0)) {
 			auto pt = cursor_pos(lparam);
 			loupe_state.position.x = 0.5 + static_cast<double>(pt.x);
 			loupe_state.position.y = 0.5 + static_cast<double>(pt.y);
@@ -1933,7 +1941,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.20-alpha4"
+#define PLUGIN_VERSION	"v1.20-alpha5"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
