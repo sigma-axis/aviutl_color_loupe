@@ -995,10 +995,7 @@ protected:
 		auto [x, y] = win2pic(p);
 		return { .x = static_cast<int>(std::floor(x)), .y = static_cast<int>(std::floor(y)) };
 	}
-	void DragAbort_core(context& cxt) override
-	{
-		DragCancel_core(cxt);
-	}
+	void DragAbort_core(context& cxt) override { DragCancel_core(cxt); }
 };
 
 inline constinit class LeftDrag : public DragState {
@@ -1124,8 +1121,9 @@ inline constinit class ObjectDrag : public DragState {
 		constexpr auto code_pos = [](auto x, auto y) {
 			return static_cast<LPARAM>((x & 0xffff) | (y << 16));
 		};
-		cxt.redraw_main |= exedit_fp->func_WndProc(exedit_fp->hwnd, message,
-			force_btn(cxt.wparam, btn), code_pos(pos.x, pos.y), cxt.editp, exedit_fp) != FALSE;
+		if (exedit_fp->func_WndProc != nullptr && exedit_fp->hwnd != nullptr)
+			cxt.redraw_main |= exedit_fp->func_WndProc(exedit_fp->hwnd, message,
+				force_btn(cxt.wparam, btn), code_pos(pos.x, pos.y), cxt.editp, exedit_fp) != FALSE;
 	}
 
 public:
@@ -1671,7 +1669,9 @@ BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHan
 	case WM_SYSKEYDOWN:
 		// if a drag operation is being held, cancel it with ESC key.
 		if (wparam == VK_ESCAPE && DragState::DragCancel(cxt)) break;
-
+		[[fallthrough]];
+	case WM_KEYUP:
+	case WM_SYSKEYUP:
 		// ショートカットキーメッセージをメインウィンドウに丸投げする．
 		if (fp->hwnd_parent != nullptr)
 			::SendMessageW(fp->hwnd_parent, message, wparam, lparam);
@@ -1710,7 +1710,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.20-alpha6"
+#define PLUGIN_VERSION	"v1.20-beta1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
