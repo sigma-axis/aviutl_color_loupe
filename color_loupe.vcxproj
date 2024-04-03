@@ -117,6 +117,7 @@
     <ClInclude Include="drag_states.hpp" />
     <ClInclude Include="key_states.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="settings.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="color_loupe.rc" />

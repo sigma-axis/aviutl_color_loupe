@@ -43,6 +43,9 @@
     <ClInclude Include="drag_states.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="settings.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="color_loupe.rc">
