@@ -107,6 +107,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="color_loupe.cpp" />
+    <ClCompile Include="dialogs.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\color_loupe.ini" />
@@ -114,6 +115,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="color_abgr.hpp" />
+    <ClInclude Include="dialogs.hpp" />
+    <ClInclude Include="dialogs_basics.hpp" />
     <ClInclude Include="drag_states.hpp" />
     <ClInclude Include="key_states.hpp" />
     <ClInclude Include="resource.h" />

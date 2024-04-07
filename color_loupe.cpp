@@ -34,9 +34,10 @@ using namespace sigma_lib::W32::UI;
 using namespace sigma_lib::W32::custom::mouse;
 
 #include "resource.h"
-HMODULE this_dll = nullptr;
+HMODULE constinit this_dll = nullptr;
 
 #include "settings.hpp"
+#include "dialogs.hpp"
 
 ////////////////////////////////
 // ルーペ状態の定義
@@ -220,7 +221,7 @@ static void replace_tail(T(&dst)[len_max], size_t len, const T(&tail_old)[len_ol
 	if (len < len_old || len - len_old + len_new > len_max) return;
 	std::memcpy(dst + len - len_old, tail_new, len_new * sizeof(T));
 }
-inline void load_settings()
+static inline void load_settings()
 {
 	char path[MAX_PATH];
 	replace_tail(path, ::GetModuleFileNameA(this_dll, path, std::size(path)) + 1, "auf", "ini");
@@ -239,7 +240,7 @@ inline void load_settings()
 	loupe_state.grid.visible = ::GetPrivateProfileIntA("state", "show_grid",
 		loupe_state.position.follow_cursor ? 1 : 0, path) != 0;
 }
-inline void save_settings()
+static inline void save_settings()
 {
 	char path[MAX_PATH];
 	replace_tail(path, ::GetModuleFileNameA(this_dll, path, std::size(path)) + 1, "auf", "ini");
@@ -406,14 +407,14 @@ public:
 ////////////////////////////////
 
 // 背景描画．
-inline void draw_backplane(HDC hdc, const RECT& rc)
+static inline void draw_backplane(HDC hdc, const RECT& rc)
 {
 	::SetDCBrushColor(hdc, settings.color.blank);
 	::FillRect(hdc, &rc, static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
 }
 
 // 画像描画．
-inline void draw_picture(HDC hdc, const RECT& vb, const RECT& vp)
+static inline void draw_picture(HDC hdc, const RECT& vb, const RECT& vp)
 {
 	::SetStretchBltMode(hdc, STRETCH_DELETESCANS);
 	::StretchDIBits(hdc, vp.left, vp.top, vp.right - vp.left, vp.bottom - vp.top,
@@ -422,7 +423,7 @@ inline void draw_picture(HDC hdc, const RECT& vb, const RECT& vp)
 }
 
 // グリッド描画 (thin)
-inline void draw_grid_thin(HDC hdc, const RECT& vb, const RECT& vp)
+static inline void draw_grid_thin(HDC hdc, const RECT& vb, const RECT& vp)
 {
 	int w = vb.right - vb.left, W = vp.right - vp.left,
 		h = vb.bottom - vb.top, H = vp.bottom - vp.top;
@@ -442,7 +443,7 @@ inline void draw_grid_thin(HDC hdc, const RECT& vb, const RECT& vp)
 }
 
 // グリッド描画 (thick)
-inline void draw_grid_thick(HDC hdc, const RECT& vb, const RECT& vp)
+static inline void draw_grid_thick(HDC hdc, const RECT& vb, const RECT& vp)
 {
 	int w = vb.right - vb.left, W = vp.right - vp.left,
 		h = vb.bottom - vb.top, H = vp.bottom - vp.top;
@@ -497,7 +498,7 @@ inline void draw_grid_thick(HDC hdc, const RECT& vb, const RECT& vp)
 }
 
 // 背景グラデーション & 枠付きの丸角矩形を描画．
-inline void draw_round_rect(HDC hdc, const RECT& rc, int radius, int thick, Color back_top, Color back_btm, Color chrome)
+static inline void draw_round_rect(HDC hdc, const RECT& rc, int radius, int thick, Color back_top, Color back_btm, Color chrome)
 {
 	auto hrgn = ::CreateRoundRectRgn(rc.left, rc.top,
 		rc.right, rc.bottom, radius, radius);
@@ -518,7 +519,7 @@ inline void draw_round_rect(HDC hdc, const RECT& rc, int radius, int thick, Colo
 	::DeleteObject(hrgn);
 }
 // 色・座標表示ボックス描画．
-inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box, int pic_x, int pic_y, Color col, bool& prefer_above)
+static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box, int pic_x, int pic_y, Color col, bool& prefer_above)
 {
 	RECT box_big = box;
 	box_big.left -= settings.tip.box_inflate; box_big.right += settings.tip.box_inflate;
@@ -575,7 +576,7 @@ inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box, int pic_x, int pi
 	::SelectObject(hdc, tmp_fon);
 }
 // 通知メッセージトースト描画．
-inline void draw_toast(HDC hdc, int wd, int ht)
+static inline void draw_toast(HDC hdc, int wd, int ht)
 {
 	constexpr auto& toast = loupe_state.toast;
 	constexpr int pad_x = 6, pad_y = 4, // トースト矩形とテキストの間の空白．
@@ -934,14 +935,14 @@ protected:
 
 // all commands below assumes image.is_valid() is true.
 // returns true if the window needs redrawing.
-inline bool centralize()
+static inline bool centralize()
 {
 	// centralize the target point.
 	loupe_state.position.x = image.width() / 2.0;
 	loupe_state.position.y = image.height() / 2.0;
 	return true;
 }
-inline bool toggle_follow_cursor(HWND hwnd)
+static inline bool toggle_follow_cursor(HWND hwnd)
 {
 	loupe_state.position.follow_cursor ^= true;
 
@@ -951,7 +952,7 @@ inline bool toggle_follow_cursor(HWND hwnd)
 		loupe_state.position.follow_cursor ? IDS_TOAST_FOLLOW_CURSOR_ON : IDS_TOAST_FOLLOW_CURSOR_OFF);
 	return true;
 }
-inline bool toggle_grid(HWND hwnd)
+static inline bool toggle_grid(HWND hwnd)
 {
 	loupe_state.grid.visible ^= true;
 
@@ -961,7 +962,7 @@ inline bool toggle_grid(HWND hwnd)
 		loupe_state.grid.visible ? IDS_TOAST_GRID_ON : IDS_TOAST_GRID_OFF);
 	return true;
 }
-inline bool apply_zoom(HWND hwnd, int new_level, double win_ox, double win_oy)
+static inline bool apply_zoom(HWND hwnd, int new_level, double win_ox, double win_oy)
 {
 	loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
 
@@ -988,7 +989,7 @@ inline bool apply_zoom(HWND hwnd, int new_level, double win_ox, double win_oy)
 	return true;
 }
 // swap the zoom level from second.
-inline bool swap_scale_level(HWND hwnd, const POINT& pt_win)
+static inline bool swap_scale_level(HWND hwnd, const POINT& pt_win)
 {
 	auto level = loupe_state.zoom.scale_level;
 	std::swap(level, loupe_state.zoom.second_level);
@@ -1002,7 +1003,7 @@ inline bool swap_scale_level(HWND hwnd, const POINT& pt_win)
 	return apply_zoom(hwnd, level, ox, oy);
 }
 template<class... TArgs>
-inline bool copy_text(size_t len, const wchar_t* fmt, const TArgs&... args)
+static bool copy_text(size_t len, const wchar_t* fmt, const TArgs&... args)
 {
 	if (!::OpenClipboard(nullptr)) return false;
 	bool success = false;
@@ -1022,7 +1023,7 @@ inline bool copy_text(size_t len, const wchar_t* fmt, const TArgs&... args)
 	return success;
 }
 // copies the color code to the clipboard.
-inline bool copy_color_code(HWND hwnd, const POINT& pt_win)
+static inline bool copy_color_code(HWND hwnd, const POINT& pt_win)
 {
 	RECT rc; ::GetClientRect(hwnd, &rc);
 	auto [x, y] = loupe_state.win2pic(pt_win.x - rc.right / 2.0, pt_win.y - rc.bottom / 2.0);
@@ -1165,6 +1166,7 @@ struct Menu {
 		case IDM_CXT_COMMAND_MCLICK_GRID:			settings.commands.middle_click		= Settings::CommonCommand::toggle_grid;			break;
 		case IDM_CXT_COMMAND_MCLICK_COPY_COLOR:		settings.commands.middle_click		= Settings::CommonCommand::copy_color_code;		break;
 		case IDM_CXT_COMMAND_MCLICK_MENU:			settings.commands.middle_click		= Settings::CommonCommand::context_menu;		break;
+		case IDM_CXT_SETTINGS:						dialogs::open_settings(hwnd);														break;
 		default: break;
 		}
 		return false;
@@ -1175,13 +1177,13 @@ struct Menu {
 ////////////////////////////////
 // AviUtlに渡す関数の定義．
 ////////////////////////////////
-inline void on_update(int w, int h, void* source)
+static inline void on_update(int w, int h, void* source)
 {
 	if (source != nullptr && image.update(w, h, source))
 		// notify the loupe of resizing.
 		loupe_state.on_resize(w, h);
 }
-inline bool on_command(HWND hwnd, Settings::CommonCommand cmd, POINT&& pt)
+static inline bool on_command(HWND hwnd, Settings::CommonCommand cmd, POINT&& pt)
 {
 	if (!image.is_valid()) return false;
 
@@ -1202,7 +1204,7 @@ inline bool on_command(HWND hwnd, Settings::CommonCommand cmd, POINT&& pt)
 	}
 }
 
-BOOL func_proc(FilterPlugin* fp, FilterProcInfo* fpip)
+static BOOL func_proc(FilterPlugin* fp, FilterProcInfo* fpip)
 {
 	// updates to the target image.
 	if (ext_obj.is_active() &&
@@ -1214,7 +1216,7 @@ BOOL func_proc(FilterPlugin* fp, FilterProcInfo* fpip)
 	return TRUE;
 }
 
-BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHandle* editp, FilterPlugin* fp)
+static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, EditHandle* editp, FilterPlugin* fp)
 {
 	using FilterMessage = FilterPlugin::WindowMessage;
 	constexpr auto cursor_pos = [](LPARAM l) {
@@ -1454,7 +1456,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v1.20"
+#define PLUGIN_VERSION	"v2.00-alpha1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

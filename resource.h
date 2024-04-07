@@ -3,12 +3,18 @@
 // Used by color_loupe.rc
 //
 #define IDR_MENU_CXT                    101
+#define IDD_VSCROLLFORM                 102
 #define IDS_TOAST_SCALE_FORMAT          103
 #define IDS_TOAST_FOLLOW_CURSOR_ON      104
 #define IDS_TOAST_FOLLOW_CURSOR_OFF     105
 #define IDS_TOAST_CLIPBOARD             106
 #define IDS_TOAST_GRID_ON               107
 #define IDS_TOAST_GRID_OFF              108
+#define IDD_SETTINGS                    109
+#define IDD_SETTINGS_FORM_CLICK_ACTION  110
+#define IDC_SETTINGS_ACTION_LIST        1001
+#define IDC_CLICK_ACTION_SELECTOR       1002
+#define IDC_DBLCLICK_ACTION_SELECTOR    1003
 #define IDM_CXT_FOLLOW_CURSOR           40001
 #define IDM_CXT_CENTRALIZE              40002
 #define IDM_CXT_REVERSE_WHEEL           40003
@@ -63,14 +69,16 @@
 #define IDM_CXT_COMMAND_RDBLCLK_GRID    40052
 #define IDM_CXT_COMMAND_MCLICK_GRID     40053
 #define IDM_CXT_TOAST_NOTIFY_TOGGLE_GRID 40054
+#define ID_ROOT_40055                   40055
+#define IDM_CXT_SETTINGS                40056
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        109
-#define _APS_NEXT_COMMAND_VALUE         40055
-#define _APS_NEXT_CONTROL_VALUE         1001
+#define _APS_NEXT_RESOURCE_VALUE        111
+#define _APS_NEXT_COMMAND_VALUE         40057
+#define _APS_NEXT_CONTROL_VALUE         1004
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
