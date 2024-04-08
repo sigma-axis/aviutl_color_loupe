@@ -42,7 +42,7 @@ HMODULE constinit this_dll = nullptr;
 ////////////////////////////////
 // ルーペ状態の定義
 ////////////////////////////////
-inline constinit struct LoupeState {
+static inline constinit struct LoupeState {
 	// position in the picture in pixels, relative to the top-left corner,
 	// which is displayed at the center of the loupe window.
 	struct {
@@ -263,7 +263,7 @@ static inline void save_settings()
 ////////////////////////////////
 // 画像バッファ．
 ////////////////////////////////
-inline constinit class ImageBuffer {
+static inline constinit class ImageBuffer {
 	BITMAPINFO bi{
 		.bmiHeader = {
 			.biSize = sizeof(bi.bmiHeader),
@@ -364,7 +364,7 @@ public:
 	constexpr bool is_valid() const { return handle() != nullptr; }
 };
 
-constinit Handle<HFONT, [](wchar_t const(*name)[], int8_t const* size) {
+static constinit Handle<HFONT, [](wchar_t const(*name)[], int8_t const* size) {
 	return ::CreateFontW(
 		*size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET,
 		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
@@ -373,14 +373,14 @@ constinit Handle<HFONT, [](wchar_t const(*name)[], int8_t const* size) {
 	tip_font{ &settings.tip.font_name, &settings.tip.font_size },
 	toast_font{ &settings.toast.font_name, &settings.toast.font_size };
 
-constinit Handle<HMENU, []{ return ::LoadMenuW(this_dll, MAKEINTRESOURCEW(IDR_MENU_CXT)); }, ::DestroyMenu>
+static constinit Handle<HMENU, []{ return ::LoadMenuW(this_dll, MAKEINTRESOURCEW(IDR_MENU_CXT)); }, ::DestroyMenu>
 	cxt_menu{};
 
 
 ////////////////////////////////
 // 外部リソース管理．
 ////////////////////////////////
-inline constinit class {
+static inline constinit class {
 	bool activated = false;
 
 public:
@@ -647,7 +647,7 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 }
 
 // 未編集時などの無効状態で単色背景を描画．
-inline void draw_blank(HWND hwnd)
+static inline void draw_blank(HWND hwnd)
 {
 	RECT rc; ::GetClientRect(hwnd, &rc);
 	HDC hdc = ::GetDC(hwnd);
@@ -655,7 +655,7 @@ inline void draw_blank(HWND hwnd)
 	::ReleaseDC(hwnd, hdc);
 }
 // メインの描画関数．
-inline void draw(HWND hwnd)
+static inline void draw(HWND hwnd)
 {
 	// image.is_valid() must be true here.
 	_ASSERT(image.is_valid());
@@ -732,25 +732,34 @@ struct DragCxt {
 };
 class DragState : public DragStateBase<DragCxt> {
 protected:
-	std::pair<double, double> win2pic(const POINT& p) {
+	static std::pair<double, double> win2pic(const POINT& p) {
 		RECT rc; ::GetClientRect(hwnd, &rc);
 		return loupe_state.win2pic(p.x - rc.right / 2.0, p.y - rc.bottom / 2.0);
 	}
-	POINT win2pic_i(const POINT& p) {
+	static POINT win2pic_i(const POINT& p) {
 		auto [x, y] = win2pic(p);
 		return { .x = static_cast<int>(std::floor(x)), .y = static_cast<int>(std::floor(y)) };
 	}
+
+	virtual Settings::KeysActivate KeysActivate() = 0;
+	virtual Settings::ZoomBehavior ZoomBehavior() = 0;
+
 	void DragAbort_core(context& cxt) override { DragCancel_core(cxt); }
+
+public:
+	inline static void InitiateDrag(HWND hwnd, const POINT& drag_start, context& cxt);
 };
 
-inline constinit class LeftDrag : public DragState {
+static inline constinit class : public DragState {
 	double revert_x{}, revert_y{}, curr_x{}, curr_y{};
 	int revert_zoom{};
 	constexpr static auto& pos = loupe_state.position;
 
 protected:
-	bool DragStart_core(context& cxt) override
+	bool DragReady_core(context& cxt) override
 	{
+		if (!image.is_valid()) return false;
+
 		revert_x = curr_x = pos.x;
 		revert_y = curr_y = pos.y;
 		revert_zoom = loupe_state.zoom.scale_level;
@@ -784,14 +793,32 @@ protected:
 		loupe_state.zoom.scale_level = revert_zoom;
 		cxt.redraw_loupe = true;
 	}
-} left_drag;
 
-inline constinit class RightDrag : public DragState {
+	Settings::KeysActivate KeysActivate() override {
+		using enum Settings::MouseButton;
+		using enum Settings::KeysActivate::Requirement;
+		// TODO: drag-specific values from settings.
+		return { .button = left, .ctrl = dontcare, .shift = dontcare, .alt = off };
+	}
+	Settings::ZoomBehavior ZoomBehavior() override {
+		// TODO: drag-specific values from settings.
+		return { .enabled = true, .reverse_wheel = settings.zoom.reverse_wheel, .pivot = settings.zoom.pivot_drag };
+	}
+} loupe_drag;
+
+static inline constinit class : public DragState {
 	constexpr static auto& tip = loupe_state.tip_state;
 	POINT init{};
 
 protected:
-	bool DragStart_core(context& cxt) override
+	bool DragReady_core(context& cxt) override
+	{
+		if (!image.is_valid()) return false;
+
+		::SetCursor(nullptr);
+		return true;
+	}
+	void DragStart_core(context& cxt) override
 	{
 		switch (settings.tip.mode) {
 			using enum Settings::TipMode;
@@ -801,23 +828,25 @@ protected:
 			break;
 		case stationary:
 		case sticky:
-			tip.visible_level = tip.is_visible() ? 0 : 2;
-			cxt.redraw_loupe = true;
-			break;
-		case none:
 		default:
-			tip.visible_level = 0;
+			cxt.redraw_loupe = true;
+			if (tip.is_visible()) {
+				// hide the tip and rewind the cursor.
+				tip.visible_level = 0;
+				::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_ARROW)));
+				return;
+			}
+			tip.visible_level = 2;
 			break;
 		}
-		if (!tip.is_visible()) return false;
 
 		init = win2pic_i(drag_start);
 		tip.x = init.x; tip.y = init.y;
-		::SetCursor(nullptr);
-		return true;
 	}
 	void DragDelta_core(const POINT& curr, context& cxt) override
 	{
+		if (!tip.is_visible()) return;
+
 		auto [dx, dy] = win2pic(curr);
 		std::tie(dx, dy) = snap_rail(dx - (0.5 + init.x), dy - (0.5 + init.y),
 			(cxt.wparam & MK_SHIFT) != 0 ? settings.tip.rail_mode : RailMode::none, true);
@@ -827,30 +856,38 @@ protected:
 		tip.x = x; tip.y = y;
 		cxt.redraw_loupe = true;
 	}
-	void DragCancel_core(context& cxt) override
-	{
-		tip.visible_level = 0;
-		cxt.redraw_loupe = true;
-	}
 	void DragEnd_core(context& cxt) override
 	{
+		if (!tip.is_visible()) return;
+
 		switch (settings.tip.mode) {
 			using enum Settings::TipMode;
 		case frail:
 			tip.visible_level = 0;
 			cxt.redraw_loupe = true;
 			break;
-		case none:
-		case stationary:
-		case sticky:
-		default:
-			break;
 		}
 		return;
 	}
-} right_drag;
+	void DragCancel_core(context& cxt) override
+	{
+		tip.visible_level = 0;
+		cxt.redraw_loupe = true;
+	}
 
-inline constinit class ObjectDrag : public DragState {
+	Settings::KeysActivate KeysActivate() override {
+		using enum Settings::MouseButton;
+		using enum Settings::KeysActivate::Requirement;
+		// TODO: drag-specific values from settings.
+		return { .button = right, .ctrl = off, .shift = dontcare, .alt = dontcare };
+	}
+	Settings::ZoomBehavior ZoomBehavior() override {
+		// TODO: drag-specific values from settings.
+		return { .enabled = true, .reverse_wheel = settings.zoom.reverse_wheel, .pivot = settings.zoom.pivot_drag };
+	}
+} tip_drag;
+
+static inline constinit class : public DragState {
 	POINT revert{}, last{};
 
 	using FilterMessage = FilterPlugin::WindowMessage;
@@ -888,21 +925,23 @@ public:
 	static bool is_valid() { return exedit_fp != nullptr; }
 
 protected:
-	bool DragStart_core(context& cxt) override
+	bool DragReady_core(context& cxt) override
 	{
-		if (!is_valid() || ::GetKeyState(VK_MENU) >= 0) return false;
+		if (!is_valid() || !image.is_valid()) return false;
 
 		last = win2pic_i(last_point);
 		if (0 <= last.x && last.x < image.width() &&
 			0 <= last.y && last.y < image.height()) {
 			revert = last;
 			::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_SIZEALL)));
-
-			ForceKeyState k{ VK_MENU, false };
-			send_message(cxt, FilterMessage::MainMouseDown, last, MK_LBUTTON);
 			return true;
 		}
 		return false;
+	}
+	void DragStart_core(context& cxt) override
+	{
+		ForceKeyState k{ VK_MENU, false }; // TODO: more options to manipulate key states.
+		send_message(cxt, FilterMessage::MainMouseDown, last, MK_LBUTTON);
 	}
 	void DragDelta_core(const POINT& curr, context& cxt) override
 	{
@@ -910,23 +949,74 @@ protected:
 		if (pt.x == last.x && pt.y == last.y) return;
 		last = pt;
 
-		ForceKeyState k{ VK_MENU, false };
+		ForceKeyState k{ VK_MENU, false }; // TODO: more options to manipulate key states.
 		send_message(cxt, FilterMessage::MainMouseMove, last, MK_LBUTTON);
 	}
 	void DragEnd_core(context& cxt) override
 	{
-		ForceKeyState k{ VK_MENU, false };
+		ForceKeyState k{ VK_MENU, false }; // TODO: more options to manipulate key states.
 		send_message(cxt, FilterMessage::MainMouseUp, last, 0);
 	}
 	void DragCancel_core(context& cxt) override
 	{
 		cxt.wparam = 0;
 
-		ForceKeyState k{ VK_MENU, false };
+		ForceKeyState k{ VK_MENU, false }; // TODO: more options to manipulate key states.
 		send_message(cxt, FilterMessage::MainMouseMove, revert, MK_LBUTTON);
 		send_message(cxt, FilterMessage::MainMouseUp, revert, 0);
 	}
-} obj_drag;
+
+	Settings::KeysActivate KeysActivate() override {
+		using enum Settings::MouseButton;
+		using enum Settings::KeysActivate::Requirement;
+		// TODO: drag-specific values from settings.
+		return { .button = left, .ctrl = dontcare, .shift = dontcare, .alt = on };
+	}
+	Settings::ZoomBehavior ZoomBehavior() override {
+		// TODO: drag-specific values from settings.
+		return { .enabled = true, .reverse_wheel = settings.zoom.reverse_wheel, .pivot = settings.zoom.pivot_drag };
+	}
+} exedit_drag;
+
+static inline constinit class : public VoidDrag<DragState> {
+protected:
+	Settings::KeysActivate KeysActivate() override { return {}; }
+	Settings::ZoomBehavior ZoomBehavior() override {
+		return { .enabled = true, .reverse_wheel = settings.zoom.reverse_wheel, .pivot = settings.zoom.pivot };
+	}
+} void_drag;
+
+inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context& cxt)
+{
+	constexpr WPARAM btns = MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2;
+	Settings::MouseButton btn;
+	switch (cxt.wparam & btns) {
+		using enum Settings::MouseButton;
+	case MK_LBUTTON:	btn = left;		break;
+	case MK_RBUTTON:	btn = right;	break;
+	case MK_MBUTTON:	btn = middle;	break;
+	case MK_XBUTTON1:	btn = x1;		break;
+	case MK_XBUTTON2:	btn = x2;		break;
+	default: return; // no button or multiple buttons.
+	}
+
+	bool ctrl = (cxt.wparam & MK_CONTROL) != 0,
+		shift = (cxt.wparam & MK_SHIFT) != 0,
+		alt = ::GetKeyState(VK_MENU) < 0;
+
+	constexpr DragState* drags[] = { &loupe_drag, &tip_drag, &exedit_drag };
+	for (auto drag : drags) {
+		// check the button/key-combination condition.
+		if (drag->KeysActivate().match(btn, ctrl, shift, alt)) {
+			// then type-specific condition.
+			if (drag->DragStart(hwnd, drag_start, cxt)) return;
+			break;
+		}
+	}
+
+	// initiate the "placeholder drag".
+	void_drag.DragStart(hwnd, drag_start, cxt);
+}
 
 
 ////////////////////////////////
@@ -1236,7 +1326,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		::ImmReleaseContext(hwnd, ::ImmAssociateContext(hwnd, nullptr));
 
 		// find exedit.
-		ObjectDrag::init(fp);
+		exedit_drag.init(fp);
 		break;
 
 	case FilterMessage::Exit:
@@ -1284,37 +1374,45 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 		// UI handlers for mouse messages.
 	case WM_LBUTTONDOWN:
-		if (DragState::DragCancel(cxt)) break;
-		if (image.is_valid()) {
-			if ((wparam & (MK_RBUTTON | MK_MBUTTON)) == 0)
-				// start dragging to move the target point.
-				if (auto pos = cursor_pos(lparam);
-					!obj_drag.DragStart(hwnd, pos, cxt))
-					left_drag.DragStart(hwnd, pos, cxt);
-		}
-		break;
 	case WM_RBUTTONDOWN:
-		if (DragState::DragCancel(cxt)) break;
-		if (image.is_valid()) {
-			if ((wparam & MK_CONTROL) != 0) {
-				// show the context menu when ctrl + right click.
-				auto pt = cursor_pos(lparam);
-				::ClientToScreen(hwnd, &pt);
-				Menu::popup_menu(hwnd, pt);
-			}
-			else if ((wparam & (MK_LBUTTON | MK_MBUTTON)) == 0)
-				// start dragging to show up the info tip.
-				right_drag.DragStart(hwnd, cursor_pos(lparam), cxt);
-		}
-		break;
 	case WM_MBUTTONDOWN:
-		DragState::DragCancel(cxt);
+	case WM_XBUTTONDOWN:
+		// cancel an existing drag operation.
+		if (!DragState::DragCancel(cxt))
+			// if nothing is canceled, try to initiate a new.
+			DragState::InitiateDrag(hwnd, cursor_pos(lparam), cxt);
 		break;
 
 	case WM_LBUTTONUP:
 	case WM_RBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_XBUTTONUP:
 		// finish dragging.
-		DragState::DragEnd(cxt);
+		if (!DragState::DragEnd(cxt)) {
+			// now recognized as a single click.
+
+			// find the assinged command.
+			auto command = Settings::CommonCommand::none;
+			switch (message) {
+			//case WM_LBUTTONUP: break;
+			case WM_RBUTTONUP:
+				// TODO: get the command id from the proper field.
+				command = Settings::CommonCommand::context_menu;
+				break;
+			case WM_MBUTTONUP:
+				command = settings.commands.middle_click;
+				break;
+			//default:
+			//	if ((wparam >> 16) == XBUTTON1) {
+			//	}
+			//	else {
+			//	}
+			//	break;
+			}
+
+			// handle the command.
+			cxt.redraw_loupe |= on_command(hwnd, command, cursor_pos(lparam));
+		}
 		break;
 	case WM_CAPTURECHANGED:
 		// abort dragging.
@@ -1364,6 +1462,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			int delta = ((static_cast<int16_t>(wparam >> 16) < 0) == settings.zoom.reverse_wheel)
 				? +1 : -1;
 
+			// TODO: take the kind of drag operation being held into account.
 			double ox = 0, oy = 0;
 			if (Settings::ZoomPivot::cursor ==
 				(DragState::is_dragging(cxt) ? settings.zoom.pivot_drag : settings.zoom.pivot)) {
@@ -1385,9 +1484,18 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_RBUTTONDBLCLK:
 		cxt.redraw_loupe = on_command(hwnd, settings.commands.right_dblclk, cursor_pos(lparam));
 		break;
-	case WM_MBUTTONUP:
-		cxt.redraw_loupe = on_command(hwnd, settings.commands.middle_click, cursor_pos(lparam));
-		break;
+	//case WM_MBUTTONDBLCLK:
+	//	// TODO: handle assigned double click command.
+	//	// cxt.redraw_loupe = on_command(hwnd, settings.commands.middle_click, cursor_pos(lparam));
+	//	break;
+	//case WM_XBUTTONDBLCLK:
+	//	if (auto h = wparam >> 16; (h & XBUTTON1) != 0) {
+	//		// TODO: handle assigned double click command.
+	//	}
+	//	else if ((h & XBUTTON2) != 0) {
+	//		// TODO: handle assigned double click command.
+	//	}
+	//	break;
 
 	case FilterMessage::MainMouseMove:
 		// mouse move on the main window while wheel is down moves the loupe position.
@@ -1456,7 +1564,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha1"
+#define PLUGIN_VERSION	"v2.00-alpha2"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

@@ -14,6 +14,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 #include <cstdint>
 #include <cmath>
+#include <chrono>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -27,24 +28,66 @@ namespace sigma_lib::W32::custom::mouse
 	enum class RailMode : uint8_t {
 		none = 0, cross = 1, octagonal = 2,
 	};
+	struct DragInvalidRange {
+		// distance of locations where the mouse button was
+		// pressed and released, measured in pixels.
+		int16_t distance;
+		// time taken from the mouse button was pressed
+		// until it's released, measured in milli seconds.
+		int16_t time_ms;
+
+		constexpr bool is_valid(int dist, int time) const {
+			return cmp_d(dist, distance) || cmp_t(time, time_ms);
+		}
+		constexpr bool is_valid(int dx, int dy, int time) const {
+			return cmp_d(dx, distance) || cmp_d(dy, distance) || cmp_t(time, time_ms);
+		}
+		consteval static DragInvalidRange AlwaysValid() { return { -1, 0 }; }
+		consteval static DragInvalidRange AlwaysInvalid() { return { invalid_val, invalid_val }; }
+
+	private:
+		constexpr static int16_t invalid_val = 0x7fff;
+		constexpr static bool cmp_d(int val, int16_t threshold) {
+			return threshold != invalid_val && (val < 0 ? -val : val) > threshold;
+		}
+		constexpr static bool cmp_t(int val, int16_t threshold) {
+			return threshold != invalid_val && val > threshold;
+		}
+	};
 
 	template<class DragContext>
 	class DragStateBase {
 		inline static constinit DragStateBase* current = nullptr;
 
+		using clock = std::chrono::steady_clock;
+		static inline constinit clock::time_point start_time{};
+		static inline constinit auto invalid_range = DragInvalidRange::AlwaysInvalid();
+		static inline bool was_validated = false;
+		static bool check_is_valid() {
+			return invalid_range.is_valid(
+				last_point.x - drag_start.x, last_point.y - drag_start.y,
+				static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - start_time).count()));
+		}
+
 	public:
 		using context = DragContext;
 
 	protected:
-		HWND hwnd{ nullptr };
-		POINT drag_start{}, last_point{}; // window coordinates.
+		static inline constinit HWND hwnd{ nullptr };
+		static inline constinit POINT drag_start{}, last_point{}; // window coordinates.
 
 		// should return true if ready to initiate the drag.
-		virtual bool DragStart_core(context& cxt) = 0;
+		virtual bool DragReady_core(context& cxt) = 0;
+		virtual void DragUnready_core(context& cxt) {}
+
+		virtual void DragStart_core(context& cxt) {};
 		virtual void DragDelta_core(const POINT& curr, context& cxt) {}
-		virtual void DragCancel_core(context& cxt) {}
 		virtual void DragEnd_core(context& cxt) {}
+		virtual void DragCancel_core(context& cxt) {}
 		virtual void DragAbort_core(context& cxt) {}
+
+		// determines whether a short drag should be recognized as a single click.
+		virtual DragInvalidRange GetInvalidRange() { return DragInvalidRange::AlwaysValid(); }
 
 		// helper function for the "directional snapping" feature.
 		static constexpr std::pair<double, double> snap_rail(double x, double y, RailMode mode, bool lattice) {
@@ -78,31 +121,48 @@ namespace sigma_lib::W32::custom::mouse
 		}
 
 	public:
-		// returns true if the dragging has started.
+		// returns true if the dragging is made ready.
 		bool DragStart(HWND hwnd, const POINT& drag_start, context& cxt)
 		{
 			if (is_dragging(cxt)) return false;
 
-			this->hwnd = hwnd;
-			this->drag_start = this->last_point = drag_start;
+			DragStateBase::hwnd = hwnd;
+			DragStateBase::drag_start = last_point = drag_start;
 
-			if (this->DragStart_core(cxt)) {
+			if (DragReady_core(cxt)) {
+				start_time = clock::now();
+				invalid_range = GetInvalidRange();
+				was_validated = false;
+
 				current = this;
 				::SetCapture(hwnd);
+
+				// instantly start drag operation if the range insisits so.
+				if (invalid_range.is_valid(0, 0)) {
+					was_validated = true;
+					current->DragStart_core(cxt);
+				}
 				return true;
 			}
 			else {
-				this->hwnd = nullptr;
+				DragStateBase::hwnd = nullptr;
 				return false;
 			}
 		}
 		// returns true if the dragging operation has been properly processed.
-		static bool DragDelta(const POINT& curr, context& cxt)
+		static bool DragDelta(const POINT& curr, context& cxt, bool force = false)
 		{
 			if (!is_dragging(cxt)) return false;
 
-			current->DragDelta_core(curr, cxt);
-			current->last_point = curr;
+			// ignore the input until it exceeds a certain range.
+			if (!was_validated && (force || check_is_valid())) {
+				was_validated = true;
+				current->DragStart_core(cxt);
+			}
+			if (was_validated) {
+				current->DragDelta_core(curr, cxt);
+				last_point = curr;
+			}
 			return true;
 		}
 		// returns true if the dragging operation has been properly canceled.
@@ -110,36 +170,42 @@ namespace sigma_lib::W32::custom::mouse
 		{
 			if (!is_dragging(cxt)) return false;
 
-			current->DragCancel_core(cxt);
+			if (was_validated) current->DragCancel_core(cxt);
+			current->DragUnready_core(cxt);
 
-			current->hwnd = nullptr;
+			hwnd = nullptr;
 			current = nullptr;
 
 			::ReleaseCapture();
 			return true;
 		}
-		// returns true if the dragging operation has been properly processed.
+		// returns false if the dragging operation should be recognized as a single click.
 		static bool DragEnd(context& cxt)
 		{
-			if (!is_dragging(cxt)) return false;
+			if (!is_dragging(cxt)) return true; // dragging must have been canceled.
 
-			current->DragEnd_core(cxt);
+			if (was_validated) current->DragEnd_core(cxt);
+			else if (check_is_valid())
+				// the mouse stayed so long it can't be recognized as a click.
+				was_validated = true;
+			current->DragUnready_core(cxt);
 
-			current->hwnd = nullptr;
+			hwnd = nullptr;
 			current = nullptr;
 
 			::ReleaseCapture();
-			return true;
+			return was_validated;
 		}
 		// returns true if there sure was a dragging state that is now aborted.
 		static bool DragAbort(context& cxt)
 		{
 			if (current == nullptr) return false;
 
-			current->DragAbort_core(cxt);
+			if (was_validated) current->DragAbort_core(cxt);
+			current->DragUnready_core(cxt);
 
-			auto tmp = current->hwnd;
-			current->hwnd = nullptr;
+			auto tmp = hwnd;
+			hwnd = nullptr;
 			current = nullptr;
 
 			if (tmp != nullptr && ::GetCapture() == tmp)
@@ -149,15 +215,34 @@ namespace sigma_lib::W32::custom::mouse
 		// verifies the dragging status, might abort if the window is no longer captured.
 		static bool is_dragging(context& cxt) {
 			if (current != nullptr) {
-				if (current->hwnd != nullptr &&
-					current->hwnd == ::GetCapture()) return true;
+				if (hwnd != nullptr &&
+					hwnd == ::GetCapture()) return true;
 
 				DragAbort(cxt);
 			}
 			return false;
 		}
 
+		template<class DragState>
+		static DragState* current_drag() { return dynamic_cast<DragState*>(current); }
+
 		// make sure derived classes finalize their fields.
 		virtual ~DragStateBase() {}
+	};
+
+	template<class DragBase>
+	class VoidDrag : public DragBase {
+		using context = DragBase::context;
+	protected:
+		bool DragReady_core(context& cxt) override { return true; }
+		void DragUnready_core(context& cxt) override {}
+
+		void DragStart_core(context& cxt) override {}
+		void DragDelta_core(const POINT& curr, context& cxt) override {}
+		void DragEnd_core(context& cxt) override {}
+		void DragCancel_core(context& cxt) override {}
+		void DragAbort_core(context& cxt) override {}
+
+		DragInvalidRange GetInvalidRange() override { return DragInvalidRange::AlwaysInvalid(); }
 	};
 }

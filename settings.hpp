@@ -29,10 +29,19 @@ inline constinit struct Settings {
 	using Color = sigma_lib::W32::GDI::Color;
 	using RailMode = sigma_lib::W32::custom::mouse::RailMode;
 
+	enum class MouseButton : uint8_t {
+		none = 0,
+		left = 1,
+		right = 2,
+		middle = 3,
+		x1 = 4,
+		x2 = 5,
+	};
 	enum class ZoomPivot : uint8_t {
 		center = 0, cursor = 1,
 	};
 	enum class TipMode : uint8_t {
+		// TODO: remove `none`.
 		none = 0, frail = 1, stationary = 2, sticky = 3,
 	};
 	enum class ToastPlacement : uint8_t {
@@ -49,6 +58,38 @@ inline constinit struct Settings {
 		copy_color_code = 4,
 		context_menu = 5,
 		toggle_grid = 6,
+	};
+
+	struct KeysActivate {
+		enum Requirement : int8_t {
+			off = 0,
+			on = 1,
+			dontcare = -1,
+		};
+		MouseButton button;
+		Requirement ctrl, shift, alt;
+
+		bool match(MouseButton button, bool ctrl, bool shift, bool alt) const {
+			constexpr auto req = [](Requirement r, bool k) {
+				switch (r) {
+				case off: return !k;
+				case on: return k;
+				case dontcare:
+				default:
+					return true;
+				}
+			};
+			return this->button == button
+				&& req(this->ctrl, ctrl)
+				&& req(this->shift, shift)
+				&& req(this->alt, alt);
+		}
+	};
+
+	struct ZoomBehavior {
+		// TODO: let ZoomPivot be contained in ZoomBehavior structure.
+		bool enabled, reverse_wheel;
+		ZoomPivot pivot;
 	};
 
 	struct {
