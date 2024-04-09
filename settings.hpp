@@ -28,49 +28,31 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 inline constinit struct Settings {
 	using Color = sigma_lib::W32::GDI::Color;
 	using RailMode = sigma_lib::W32::custom::mouse::RailMode;
+	using DragInvalidRange = sigma_lib::W32::custom::mouse::DragInvalidRange;
 
-	enum class MouseButton : uint8_t {
-		none = 0,
-		left = 1,
-		right = 2,
-		middle = 3,
-		x1 = 4,
-		x2 = 5,
-	};
 	enum class ZoomPivot : uint8_t {
 		center = 0, cursor = 1,
 	};
-	enum class TipMode : uint8_t {
-		// TODO: remove `none`.
-		none = 0, frail = 1, stationary = 2, sticky = 3,
-	};
-	enum class ToastPlacement : uint8_t {
-		center = 0, left_top = 1, right_top = 2, right_bottom = 3, left_bottom = 4,
-	};
-	enum class ToastScaleFormat : uint8_t {
-		fraction = 0, decimal = 1, percent = 2,
-	};
-	enum class CommonCommand : uint8_t {
-		none = 0,
-		centralize = 1,
-		toggle_follow_cursor = 2,
-		swap_scale_level = 3,
-		copy_color_code = 4,
-		context_menu = 5,
-		toggle_grid = 6,
-	};
 
 	struct KeysActivate {
-		enum Requirement : int8_t {
-			off = 0,
-			on = 1,
+		enum MouseButton : uint8_t {
+			none	= 0,
+			left	= 1,
+			right	= 2,
+			middle	= 3,
+			x1		= 4,
+			x2		= 5,
+		};
+		enum State : int8_t {
+			off	= 0,
+			on	= 1,
 			dontcare = -1,
 		};
 		MouseButton button;
-		Requirement ctrl, shift, alt;
+		State ctrl, shift, alt;
 
 		bool match(MouseButton button, bool ctrl, bool shift, bool alt) const {
-			constexpr auto req = [](Requirement r, bool k) {
+			constexpr auto req = [](State r, bool k) {
 				switch (r) {
 				case off: return !k;
 				case on: return k;
@@ -79,73 +61,104 @@ inline constinit struct Settings {
 					return true;
 				}
 			};
-			return this->button == button
-				&& req(this->ctrl, ctrl)
-				&& req(this->shift, shift)
-				&& req(this->alt, alt);
+			return button != none
+				&& this->button == button
+				&& req(this->ctrl,	ctrl)
+				&& req(this->shift,	shift)
+				&& req(this->alt,	alt);
 		}
 	};
 
 	struct ZoomBehavior {
-		// TODO: let ZoomPivot be contained in ZoomBehavior structure.
 		bool enabled, reverse_wheel;
 		ZoomPivot pivot;
 	};
 
-	struct {
+	struct LoupeDrag {
+		KeysActivate keys{ KeysActivate::left, KeysActivate::dontcare, KeysActivate::dontcare, KeysActivate::off };
+		DragInvalidRange range{ .distance = 2, .timespan = 800 };
+		ZoomBehavior zoom{ true, false, ZoomPivot::cursor };
+
 		bool lattice = false;
 		RailMode rail_mode = RailMode::cross;
-	} positioning;
+	} loupe_drag;
 
-	struct {
-		bool reverse_wheel = false;
-		ZoomPivot pivot = ZoomPivot::center,
-			pivot_drag = ZoomPivot::cursor,
-			pivot_swap = ZoomPivot::cursor;
-	} zoom;
+	struct TipDrag {
+		KeysActivate keys{ KeysActivate::left, KeysActivate::off, KeysActivate::dontcare, KeysActivate::dontcare };
+		DragInvalidRange range = DragInvalidRange::AlwaysValid();
+		ZoomBehavior zoom{ true, false, ZoomPivot::cursor };
 
-	struct {
-		Color
-			// Light theme
-			chrome = { 0x76,0x76,0x76 },
-			back_top = { 0xff,0xff,0xff },
-			back_bottom = { 0xe4,0xec,0xf7 },
-			text = { 0x3b,0x3d,0x3f },
-			blank = { 0xf0,0xf0,0xf0 };
-
-		// Dark theme
-	//	chrome		= { 0x76,0x76,0x76 },
-	//	back_top	= { 0x2b,0x2b,0x2b },
-	//	back_bottom	= { 0x2b,0x2b,0x2b },
-	//	text		= { 0xff,0xff,0xff },
-	//	blank		= { 0x33,0x33,0x33 };
-	} color;
-
-	struct {
-		TipMode mode = TipMode::frail;
+		enum Mode : uint8_t {
+			frail = 0, stationary = 1, sticky = 2,
+		};
+		Mode mode = frail;
 		RailMode rail_mode = RailMode::cross;
 
 		wchar_t font_name[LF_FACESIZE]{ L"Consolas" };
-		int8_t font_size = 16;
+		int8_t font_size		= 16;
 
-		int8_t box_inflate = 4;
-		int8_t chrome_thick = 1;
-		int8_t chrome_radius = 3;
+		int8_t box_inflate		= 4;
+		int8_t chrome_thick		= 1;
+		int8_t chrome_radius	= 3;
 
-		constexpr static int8_t min_font_size = 4, max_font_size = 72;
-		constexpr static int8_t min_box_inflate = 0, max_box_inflate = 16;
-		constexpr static int8_t min_chrome_thick = 0, max_chrome_thick = 16;
-		constexpr static int8_t min_chrome_radius = 0, max_chrome_radius = 32;
-	} tip{};
+		constexpr static int8_t font_size_min		= 4, font_size_max		= 72;
+		constexpr static int8_t box_inflate_min		= 0, box_inflate_max	= 16;
+		constexpr static int8_t chrome_thick_min	= 0, chrome_thick_max	= 16;
+		constexpr static int8_t chrome_radius_min	= 0, chrome_radius_max	= 32;
+	} tip_drag{};
 
-	struct {
+	struct ExEditDrag {
+		KeysActivate keys{ KeysActivate::left, KeysActivate::on, KeysActivate::dontcare, KeysActivate::dontcare };
+		DragInvalidRange range{ .distance = 2, .timespan = 800 };
+		ZoomBehavior zoom{ true, false, ZoomPivot::cursor };
+
+		enum KeyDisguise : uint8_t {
+			flat	= 0,
+			off		= 1,
+			on		= 2,
+			invert	= 3,
+		};
+		KeyDisguise shift = flat, alt = off; // no ctrl key; it's kind of special.
+	} exedit_drag;
+
+	ZoomBehavior mouse_wheel{
+		.enabled		= true,
+		.reverse_wheel	= false,
+		.pivot			= ZoomPivot::center,
+	};
+
+	struct ColorScheme {
+		Color
+			// Light theme
+			chrome		= { 0x76,0x76,0x76 },
+			back_top	= { 0xff,0xff,0xff },
+			back_bottom	= { 0xe4,0xec,0xf7 },
+			text		= { 0x3b,0x3d,0x3f },
+			blank		= { 0xf0,0xf0,0xf0 };
+
+			// Dark theme
+		//	chrome		= { 0x76,0x76,0x76 },
+		//	back_top	= { 0x2b,0x2b,0x2b },
+		//	back_bottom	= { 0x2b,0x2b,0x2b },
+		//	text		= { 0xff,0xff,0xff },
+		//	blank		= { 0x33,0x33,0x33 };
+	} color;
+
+	struct Toast {
 		bool notify_scale = true;
 		bool notify_follow_cursor = true;
 		bool notify_grid = true;
 		bool notify_clipboard = true;
 
-		ToastPlacement placement = ToastPlacement::right_bottom;
-		ToastScaleFormat scale_format = ToastScaleFormat::decimal;
+		enum class Placement : uint8_t {
+			center = 0, left_top = 1, right_top = 2, right_bottom = 3, left_bottom = 4,
+		};
+		Placement placement = Placement::right_bottom;
+
+		enum class ScaleFormat : uint8_t {
+			fraction = 0, decimal = 1, percent = 2,
+		};
+		ScaleFormat scale_format = ScaleFormat::decimal;
 
 		int duration = 3000;
 
@@ -155,17 +168,17 @@ inline constinit struct Settings {
 		int8_t chrome_thick = 1;
 		int8_t chrome_radius = 3;
 
-		constexpr static int min_duration = 200, max_duration = 60'000;
-		constexpr static int8_t min_font_size = 4, max_font_size = 72;
-		constexpr static int8_t min_chrome_thick = 0, max_chrome_thick = 16;
-		constexpr static int8_t min_chrome_radius = 0, max_chrome_radius = 32;
+		constexpr static int	duration_min		= 200,	duration_max		= 60'000;
+		constexpr static int8_t	font_size_min		= 4,	font_size_max		= 72;
+		constexpr static int8_t	chrome_thick_min	= 0,	chrome_thick_max	= 16;
+		constexpr static int8_t	chrome_radius_min	= 0,	chrome_radius_max	= 32;
 	} toast{};
 
-	struct {
+	struct Grid {
 		int8_t least_scale_thin = 8;
 		int8_t least_scale_thick = 12;
-		constexpr static int8_t min_least_scale_thin = 6, max_least_scale_thin = 21;
-		constexpr static int8_t min_least_scale_thick = 6, max_least_scale_thick = 21;
+		constexpr static int8_t least_scale_thin_min	= 6, least_scale_thin_max	= 21;
+		constexpr static int8_t least_scale_thick_min	= 6, least_scale_thick_max	= 21;
 
 		// 0: no grid, 1: thin grid, 2: thick grid.
 		uint8_t grid_thick(int scale_level) const {
@@ -175,11 +188,31 @@ inline constinit struct Settings {
 		}
 	} grid;
 
-	struct {
-		CommonCommand
-			left_dblclk = CommonCommand::swap_scale_level,
-			right_dblclk = CommonCommand::copy_color_code,
-			middle_click = CommonCommand::toggle_follow_cursor;
+	struct ClickActions {
+		enum Command : uint8_t {
+			none = 0,
+			centralize = 1,
+			toggle_follow_cursor = 2,
+			swap_scale_level = 3,
+			copy_color_code = 4,
+			context_menu = 5,
+			toggle_grid = 6,
+			settings = 7,
+		};
+		Command
+			left_click		= none,
+			right_click		= context_menu,
+			middle_click	= toggle_follow_cursor,
+			x1_click		= none,
+			x2_click		= none,
+
+			left_dblclk		= swap_scale_level,
+			right_dblclk	= copy_color_code,
+			middle_dblclk	= none,
+			x1_dblclk		= none,
+			x2_dblclk		= none;
+
+		ZoomPivot swap_scale_level_pivot = ZoomPivot::cursor;
 	} commands;
 
 	// loading from .ini file.
@@ -191,7 +224,7 @@ inline constinit struct Settings {
 		};
 #define load_gen(section, tgt, read, write)	section.tgt = read(read_raw(write(section.tgt), #section, #tgt))
 #define load_int(section, tgt)		load_gen(section, tgt, \
-			[](auto y) { return std::clamp(y, decltype(section)::min_##tgt, decltype(section)::max_##tgt); }, /*id*/)
+			[&](auto y) { return std::clamp(y, section.tgt##_min, section.tgt##_max); }, /*id*/)
 #define load_bool(section, tgt)		load_gen(section, tgt, \
 			[](auto y) { return y != 0; }, [](auto x) { return x ? 1 : 0; })
 #define load_enum(section, tgt)		load_gen(section, tgt, \
@@ -199,26 +232,42 @@ inline constinit struct Settings {
 #define load_color(section, tgt)	load_gen(section, tgt, \
 			[](auto y) { return Color::fromARGB(y); }, [](auto x) { return x.to_formattable(); })
 
-		load_bool(positioning, lattice);
-		load_enum(positioning, rail_mode);
+#define load_drag(section)	\
+		load_enum(section, keys.button);\
+		load_enum(section, keys.ctrl);\
+		load_enum(section, keys.shift);\
+		load_enum(section, keys.alt);\
+		load_int(section, range.distance); \
+		load_int(section, range.timespan);\
+		load_bool(section, zoom.enabled);\
+		load_bool(section, zoom.reverse_wheel);\
+		load_enum(section, zoom.pivot)
 
-		load_bool(zoom, reverse_wheel);
-		load_enum(zoom, pivot);
-		load_enum(zoom, pivot_drag);
-		load_enum(zoom, pivot_swap);
+		load_drag(loupe_drag);
+		load_bool(loupe_drag, lattice);
+		load_enum(loupe_drag, rail_mode);
+
+		load_drag(tip_drag);
+		load_enum(tip_drag, mode);
+		load_enum(tip_drag, rail_mode);
+		load_int(tip_drag, font_size);
+		load_int(tip_drag, box_inflate);
+		load_int(tip_drag, chrome_thick);
+		load_int(tip_drag, chrome_radius);
+
+		load_drag(exedit_drag);
+		load_enum(exedit_drag, shift);
+		load_enum(exedit_drag, alt);
+
+		load_bool(mouse_wheel, enabled);
+		load_bool(mouse_wheel, reverse_wheel);
+		load_enum(mouse_wheel, pivot);
 
 		load_color(color, chrome);
 		load_color(color, back_top);
 		load_color(color, back_bottom);
 		load_color(color, text);
 		load_color(color, blank);
-
-		load_enum(tip, mode);
-		load_enum(tip, rail_mode);
-		load_int(tip, font_size);
-		load_int(tip, box_inflate);
-		load_int(tip, chrome_thick);
-		load_int(tip, chrome_radius);
 
 		load_bool(toast, notify_scale);
 		load_bool(toast, notify_follow_cursor);
@@ -232,9 +281,9 @@ inline constinit struct Settings {
 		load_int(toast, chrome_radius);
 
 		{
-			char buf_ansi[3 * std::extent_v<decltype(tip.font_name)>];
+			char buf_ansi[3 * std::extent_v<decltype(tip_drag.font_name)>];
 			if (::GetPrivateProfileStringA("tip", "font_name", "", buf_ansi, std::size(buf_ansi), ini_file) > 0)
-				::MultiByteToWideChar(CP_UTF8, 0, buf_ansi, -1, tip.font_name, std::size(tip.font_name));
+				::MultiByteToWideChar(CP_UTF8, 0, buf_ansi, -1, tip_drag.font_name, std::size(tip_drag.font_name));
 
 			if (::GetPrivateProfileStringA("toast", "font_name", "", buf_ansi, std::size(buf_ansi), ini_file) > 0)
 				::MultiByteToWideChar(CP_UTF8, 0, buf_ansi, -1, toast.font_name, std::size(toast.font_name));
@@ -243,10 +292,20 @@ inline constinit struct Settings {
 		load_int(grid, least_scale_thin);
 		load_int(grid, least_scale_thick);
 
+		load_enum(commands, left_click);
+		load_enum(commands, right_click);
+		load_enum(commands, middle_click);
+		load_enum(commands, x1_click);
+		load_enum(commands, x2_click);
 		load_enum(commands, left_dblclk);
 		load_enum(commands, right_dblclk);
-		load_enum(commands, middle_click);
+		load_enum(commands, middle_dblclk);
+		load_enum(commands, x1_dblclk);
+		load_enum(commands, x2_dblclk);
 
+		load_enum(commands, swap_scale_level_pivot);
+
+#undef load_drag
 #undef load_color
 #undef load_enum
 #undef load_bool
@@ -267,27 +326,42 @@ inline constinit struct Settings {
 #define save_dec(section, tgt)		save_gen(section, tgt, /* id */, false)
 #define save_color(section, tgt)	save_gen(section, tgt, [](auto y) { return y.formattable(); }, true)
 #define save_bool(section, tgt)		::WritePrivateProfileStringA(#section, #tgt, section.tgt ? "1" : "0", ini_file)
+#define save_drag(section)	\
+		save_dec(section, keys.button);\
+		save_dec(section, keys.ctrl);\
+		save_dec(section, keys.shift);\
+		save_dec(section, keys.alt);\
+		save_dec(section, range.distance); \
+		save_dec(section, range.timespan);\
+		save_bool(section, zoom.enabled);\
+		save_bool(section, zoom.reverse_wheel);\
+		save_dec(section, zoom.pivot)
 
-		save_dec(positioning, lattice);
-		save_dec(positioning, rail_mode);
+		save_drag(loupe_drag);
+		save_dec(loupe_drag, lattice);
+		save_dec(loupe_drag, rail_mode);
 
-		save_bool(zoom, reverse_wheel);
-		save_dec(zoom, pivot);
-		save_dec(zoom, pivot_drag);
-		save_dec(zoom, pivot_swap);
+		save_drag(tip_drag);
+		save_dec(tip_drag, mode);
+		save_dec(tip_drag, rail_mode);
+		//save_dec(tip_drag, font_size);
+		//save_dec(tip_drag, box_inflate);
+		//save_dec(tip_drag, chrome_thick);
+		//save_dec(tip_drag, chrome_radius);
+
+		save_drag(exedit_drag);
+		save_dec(exedit_drag, shift);
+		save_dec(exedit_drag, alt);
+
+		save_bool(mouse_wheel, enabled);
+		save_bool(mouse_wheel, reverse_wheel);
+		save_dec(mouse_wheel, pivot);
 
 		//save_color(color, chrome);
 		//save_color(color, back_top);
 		//save_color(color, back_bottom);
 		//save_color(color, text);
 		//save_color(color, blank);
-
-		save_dec(tip, mode);
-		save_dec(tip, rail_mode);
-		//save_dec(tip, font_size);
-		//save_dec(tip, box_inflate);
-		//save_dec(tip, chrome_thick);
-		//save_dec(tip, chrome_radius);
 
 		save_bool(toast, notify_scale);
 		save_bool(toast, notify_follow_cursor);
@@ -312,9 +386,18 @@ inline constinit struct Settings {
 		//save_dec(grid, least_scale_thin);
 		//save_dec(grid, least_scale_thick);
 
+		save_dec(commands, left_click);
+		save_dec(commands, right_click);
+		save_dec(commands, middle_click);
+		save_dec(commands, x1_click);
+		save_dec(commands, x2_click);
 		save_dec(commands, left_dblclk);
 		save_dec(commands, right_dblclk);
-		save_dec(commands, middle_click);
+		save_dec(commands, middle_dblclk);
+		save_dec(commands, x1_dblclk);
+		save_dec(commands, x2_dblclk);
+
+		save_dec(commands, swap_scale_level_pivot);
 
 		// lines commented out are setting items that threre're no means to change at runtime.
 

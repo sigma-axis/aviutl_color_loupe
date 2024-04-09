@@ -34,13 +34,13 @@ namespace sigma_lib::W32::custom::mouse
 		int16_t distance;
 		// time taken from the mouse button was pressed
 		// until it's released, measured in milli seconds.
-		int16_t time_ms;
+		int16_t timespan;
 
 		constexpr bool is_valid(int dist, int time) const {
-			return cmp_d(dist, distance) || cmp_t(time, time_ms);
+			return cmp_d(dist, distance) || cmp_t(time, timespan);
 		}
 		constexpr bool is_valid(int dx, int dy, int time) const {
-			return cmp_d(dx, distance) || cmp_d(dy, distance) || cmp_t(time, time_ms);
+			return cmp_d(dx, distance) || cmp_d(dy, distance) || cmp_t(time, timespan);
 		}
 		consteval static DragInvalidRange AlwaysValid() { return { -1, 0 }; }
 		consteval static DragInvalidRange AlwaysInvalid() { return { invalid_val, invalid_val }; }
@@ -53,6 +53,10 @@ namespace sigma_lib::W32::custom::mouse
 		constexpr static bool cmp_t(int val, int16_t threshold) {
 			return threshold != invalid_val && val > threshold;
 		}
+
+	public:
+		constexpr static int16_t distance_min = -1, distance_max = 64;
+		constexpr static int16_t timespan_min = 0, timespan_max = invalid_val;
 	};
 
 	template<class DragContext>
@@ -63,9 +67,9 @@ namespace sigma_lib::W32::custom::mouse
 		static inline constinit clock::time_point start_time{};
 		static inline constinit auto invalid_range = DragInvalidRange::AlwaysInvalid();
 		static inline bool was_validated = false;
-		static bool check_is_valid() {
+		static bool check_is_valid(const POINT& curr) {
 			return invalid_range.is_valid(
-				last_point.x - drag_start.x, last_point.y - drag_start.y,
+				curr.x - drag_start.x, curr.y - drag_start.y,
 				static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - start_time).count()));
 		}
 
@@ -87,7 +91,7 @@ namespace sigma_lib::W32::custom::mouse
 		virtual void DragAbort_core(context& cxt) {}
 
 		// determines whether a short drag should be recognized as a single click.
-		virtual DragInvalidRange GetInvalidRange() { return DragInvalidRange::AlwaysValid(); }
+		virtual DragInvalidRange InvalidRange() { return DragInvalidRange::AlwaysValid(); }
 
 		// helper function for the "directional snapping" feature.
 		static constexpr std::pair<double, double> snap_rail(double x, double y, RailMode mode, bool lattice) {
@@ -131,7 +135,7 @@ namespace sigma_lib::W32::custom::mouse
 
 			if (DragReady_core(cxt)) {
 				start_time = clock::now();
-				invalid_range = GetInvalidRange();
+				invalid_range = InvalidRange();
 				was_validated = false;
 
 				current = this;
@@ -155,7 +159,7 @@ namespace sigma_lib::W32::custom::mouse
 			if (!is_dragging(cxt)) return false;
 
 			// ignore the input until it exceeds a certain range.
-			if (!was_validated && (force || check_is_valid())) {
+			if (!was_validated && (force || check_is_valid(curr))) {
 				was_validated = true;
 				current->DragStart_core(cxt);
 			}
@@ -185,7 +189,7 @@ namespace sigma_lib::W32::custom::mouse
 			if (!is_dragging(cxt)) return true; // dragging must have been canceled.
 
 			if (was_validated) current->DragEnd_core(cxt);
-			else if (check_is_valid())
+			else if (check_is_valid(drag_start))
 				// the mouse stayed so long it can't be recognized as a click.
 				was_validated = true;
 			current->DragUnready_core(cxt);
@@ -243,6 +247,6 @@ namespace sigma_lib::W32::custom::mouse
 		void DragCancel_core(context& cxt) override {}
 		void DragAbort_core(context& cxt) override {}
 
-		DragInvalidRange GetInvalidRange() override { return DragInvalidRange::AlwaysInvalid(); }
+		DragInvalidRange InvalidRange() override { return DragInvalidRange::AlwaysInvalid(); }
 	};
 }
