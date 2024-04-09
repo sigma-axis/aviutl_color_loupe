@@ -136,6 +136,7 @@ namespace dialogs::basics
 	// Scroll Viewer.
 	////////////////////////////////
 	class vscroll_form : public dialog_base {
+		int prev_scroll_pos = 0;
 	protected:
 		const wchar_t* template_id() const override {
 			return MAKEINTRESOURCEW(IDD_VSCROLLFORM);
@@ -164,8 +165,16 @@ namespace dialogs::basics
 		}
 
 		void on_scroll(int pos) {
-			for (auto& child : children)
+			auto diff = prev_scroll_pos - pos;
+			prev_scroll_pos = pos;
+			for (auto& child : children) {
+				if (diff > 0) {
+					// to prevent wrong drawings.
+					RECT rc{ 0, 0, child.w, diff };
+					::InvalidateRect(child.inst->hwnd, &rc, FALSE);
+				}
 				::MoveWindow(child.inst->hwnd, child.x, child.y - pos, child.w, child.h, TRUE);
+			}
 		}
 
 		void  on_resize(int w, int h)
