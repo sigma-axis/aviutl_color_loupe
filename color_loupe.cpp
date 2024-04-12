@@ -45,7 +45,7 @@ HMODULE constinit this_dll = nullptr;
 static inline constinit struct LoupeState {
 	// position in the picture in pixels, relative to the top-left corner,
 	// which is displayed at the center of the loupe window.
-	struct {
+	struct Position {
 		double x, y;
 		bool follow_cursor = false;
 		void clamp(int w, int h) {
@@ -55,11 +55,9 @@ static inline constinit struct LoupeState {
 	} position{ 0,0 };
 
 	// zoom --- manages the scaling ratio of zooming.
-	struct {
+	struct Zoom {
 		int scale_level, second_level;
 		constexpr static int scale_level_min = -13, scale_level_max = 20;
-		static_assert(scale_level_max == Settings::ZoomBehavior::max_scale_level_max);
-		static_assert(scale_level_min == Settings::ZoomBehavior::min_scale_level_min);
 
 	private:
 		constexpr static int scale_denominator = 4;
@@ -94,7 +92,7 @@ static inline constinit struct LoupeState {
 	} zoom{ 8, 0 };
 
 	// tip --- tooltip-like info.
-	struct {
+	struct Tip {
 		int x = 0, y = 0;
 		uint8_t visible_level = 0; // 0: not visible, 1: not visible until mouse enters, >= 2: visible.
 		constexpr bool is_visible() const { return visible_level > 1; }
@@ -102,29 +100,10 @@ static inline constinit struct LoupeState {
 	} tip_state;
 
 	// toast --- notification message.
-	struct {
+	struct Toast {
 		constexpr static int max_len_message = 32;
 		wchar_t message[max_len_message]{ L"" };
 		bool visible = false;
-
-		auto timer_id() const { return  reinterpret_cast<UINT_PTR>(this); }
-		template<class... TArgs>
-		void set_message(HWND hwnd, int time_ms, UINT id, const TArgs&... args)
-		{
-			if constexpr (sizeof...(TArgs) > 0) {
-				int_least64_t ptr;
-				::LoadStringW(this_dll, id, reinterpret_cast<wchar_t*>(&ptr), 0);
-				std::swprintf(message, std::size(message), reinterpret_cast<wchar_t*>(ptr), args...);
-			}
-			else ::LoadStringW(this_dll, id, message, std::size(message));
-			::SetTimer(hwnd, timer_id(), time_ms, nullptr);
-			visible = true;
-		}
-		void on_timeout(HWND hwnd)
-		{
-			::KillTimer(hwnd, timer_id());
-			visible = false;
-		}
 	} toast{};
 
 	// grid
@@ -208,6 +187,8 @@ static inline constinit struct LoupeState {
 		tip_state = { .x = w2, .y = h2, .visible_level = 0 };
 	}
 } loupe_state;
+static_assert(LoupeState::Zoom::scale_level_max == Settings::ZoomBehavior::max_scale_level_max);
+static_assert(LoupeState::Zoom::scale_level_min == Settings::ZoomBehavior::min_scale_level_min);
 
 // define a function to export.
 std::tuple<int, int> Settings::HelperFunctions::ZoomScaleFromLevel(int scale_level) {
@@ -361,12 +342,18 @@ public:
 		return handle();
 	}
 	void free() {
-		deleter(handle());
-		handle() = nullptr;
+		if (handle() != nullptr) {
+			deleter(handle());
+			handle() = nullptr;
+		}
 	}
 
 	operator H() { return get(); }
 	constexpr bool is_valid() const { return handle() != nullptr; }
+
+	Handle(const Handle&) = delete;
+	constexpr Handle(Handle&& that) : data{ that.data } { that.handle() = nullptr; }
+	~Handle() { free(); }
 };
 
 static constinit Handle<HFONT, [](wchar_t const(*name)[], int8_t const* size) {
@@ -405,6 +392,52 @@ public:
 		cxt_menu.free();
 	}
 } ext_obj;
+
+
+////////////////////////////////
+// 通知メッセージのタイマー管理．
+////////////////////////////////
+static inline constinit class ToastManager {
+	HWND hwnd = nullptr;
+	bool active = false;
+
+public:
+	auto timer_id() const { return reinterpret_cast<intptr_t>(this); }
+	bool is_active() const { return active; }
+
+	HWND destination() const { return hwnd; }
+	// set nullptr when exitting.
+	void set_destination(HWND hwnd) {
+		on_timer();
+		this->hwnd = hwnd;
+	}
+
+	void set_message(int time_ms, uint32_t id, const auto&... args)
+	{
+		if (hwnd == nullptr) return;
+
+		// load / format the message string from resource.
+		if constexpr (sizeof...(args) > 0) {
+			intptr_t ptr;
+			::LoadStringW(this_dll, id, reinterpret_cast<wchar_t*>(&ptr), 0);
+			std::swprintf(loupe_state.toast.message, std::size(loupe_state.toast.message), reinterpret_cast<wchar_t*>(ptr), args...);
+		}
+		else ::LoadStringW(this_dll, id, loupe_state.toast.message, std::size(loupe_state.toast.message));
+
+		active = true;
+		::SetTimer(hwnd, timer_id(), time_ms, nullptr);
+		loupe_state.toast.visible = true;
+	}
+	// you can also use this function to reset the toast state.
+	void on_timer()
+	{
+		if (active && hwnd != nullptr) {
+			active = false;
+			::KillTimer(hwnd, timer_id());
+		}
+		loupe_state.toast.visible = false;
+	}
+} toast_manager;
 
 
 ////////////////////////////////
@@ -917,6 +950,15 @@ static inline constinit class : public DragState {
 		default: return { vkey, !curr() };
 		}
 	}
+	static void disguise_wparam(const Settings::ExEditDrag& op, WPARAM& wp) {
+		switch (op.shift) {
+			using enum Settings::ExEditDrag::KeyDisguise;
+		case off:		wp &= ~MK_SHIFT; break;
+		case on:		wp |= MK_SHIFT; break;
+		case invert:	wp ^= MK_SHIFT; break;
+		case flat: default: break;
+		}
+	}
 
 public:
 	static void init(FilterPlugin* this_fp) {
@@ -953,13 +995,7 @@ protected:
 		const auto& op = settings.exedit_drag;
 		auto shift = key_disguise(VK_SHIFT, op.shift, [&]{ return (cxt.wparam & MK_SHIFT) != 0; }),
 			alt = key_disguise(VK_MENU, op.alt, []{ return ::GetKeyState(VK_MENU) < 0; });
-		switch (op.shift) {
-			using enum std::decay_t<decltype(op.shift)>;
-		case off:		cxt.wparam &=~MK_SHIFT; break;
-		case on:		cxt.wparam |= MK_SHIFT; break;
-		case invert:	cxt.wparam ^= MK_SHIFT; break;
-		case flat: default: break;
-		}
+		disguise_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseDown, last, MK_LBUTTON);
 	}
 	void DragDelta_core(const POINT& curr, context& cxt) override
@@ -971,13 +1007,7 @@ protected:
 		const auto& op = settings.exedit_drag;
 		auto shift = key_disguise(VK_SHIFT, op.shift, [&]{ return (cxt.wparam & MK_SHIFT) != 0; }),
 			alt = key_disguise(VK_MENU, op.alt, []{ return ::GetKeyState(VK_MENU) < 0; });
-		switch (op.shift) {
-			using enum std::decay_t<decltype(op.shift)>;
-		case off:		cxt.wparam &= ~MK_SHIFT; break;
-		case on:		cxt.wparam |= MK_SHIFT; break;
-		case invert:	cxt.wparam ^= MK_SHIFT; break;
-		case flat: default: break;
-		}
+		disguise_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseMove, last, MK_LBUTTON);
 	}
 	void DragEnd_core(context& cxt) override
@@ -985,13 +1015,7 @@ protected:
 		const auto& op = settings.exedit_drag;
 		auto shift = key_disguise(VK_SHIFT, op.shift, [&]{ return (cxt.wparam & MK_SHIFT) != 0; }),
 			alt = key_disguise(VK_MENU, op.alt, []{ return ::GetKeyState(VK_MENU) < 0; });
-		switch (op.shift) {
-			using enum std::decay_t<decltype(op.shift)>;
-		case off:		cxt.wparam &= ~MK_SHIFT; break;
-		case on:		cxt.wparam |= MK_SHIFT; break;
-		case invert:	cxt.wparam ^= MK_SHIFT; break;
-		case flat: default: break;
-		}
+		disguise_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseUp, last, 0);
 	}
 	void DragCancel_core(context& cxt) override
@@ -1059,35 +1083,38 @@ static inline bool centralize()
 	loupe_state.position.y = image.height() / 2.0;
 	return true;
 }
-static inline bool toggle_follow_cursor(HWND hwnd)
+static inline bool toggle_follow_cursor()
 {
 	loupe_state.position.follow_cursor ^= true;
 
 	// toast message.
 	if (!settings.toast.notify_follow_cursor) return false;
-	loupe_state.toast.set_message(hwnd, settings.toast.duration,
+	toast_manager.set_message(settings.toast.duration,
 		loupe_state.position.follow_cursor ? IDS_TOAST_FOLLOW_CURSOR_ON : IDS_TOAST_FOLLOW_CURSOR_OFF);
 	return true;
 }
-static inline bool toggle_grid(HWND hwnd)
+static inline bool toggle_grid()
 {
 	loupe_state.grid.visible ^= true;
 
 	// toast message.
 	if (!settings.toast.notify_grid) return false;
-	loupe_state.toast.set_message(hwnd, settings.toast.duration,
+	toast_manager.set_message(settings.toast.duration,
 		loupe_state.grid.visible ? IDS_TOAST_GRID_ON : IDS_TOAST_GRID_OFF);
 	return true;
 }
-static inline bool apply_zoom(HWND hwnd, int new_level, double win_ox, double win_oy)
+static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 {
-	loupe_state.apply_zoom(
-		std::clamp<int>(new_level, settings.zoom.min_scale_level, settings.zoom.max_scale_level),
-		win_ox, win_oy, image.width(), image.height());
+	// ignore if the scale level is identical.
+	new_level = std::clamp<int>(new_level, settings.zoom.min_scale_level, settings.zoom.max_scale_level);
+	if (new_level == loupe_state.zoom.scale_level) return false;
+
+	// apply.
+	loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
 
 	// toast message.
 	if (!settings.toast.notify_scale) return false;
-	wchar_t scale[std::max(std::size(L"x 123/456"), std::max(std::size(L"x 123.00"), std::size(L"123.45%")))];
+	wchar_t scale[std::max(std::size(L"x 123/456"), std::max(std::size(L"x 123.45"), std::size(L"123.45%")))];
 	switch (settings.toast.scale_format) {
 		using enum Settings::Toast::ScaleFormat;
 	case decimal:
@@ -1104,22 +1131,17 @@ static inline bool apply_zoom(HWND hwnd, int new_level, double win_ox, double wi
 		else std::swprintf(scale, std::size(scale), L"x %d/%d", n, d);
 		break;
 	}
-	loupe_state.toast.set_message(hwnd, settings.toast.duration, IDS_TOAST_SCALE_FORMAT, scale);
+	toast_manager.set_message(settings.toast.duration, IDS_TOAST_SCALE_FORMAT, scale);
 	return true;
 }
-// swap the zoom level from second.
-static inline bool swap_scale_level(HWND hwnd, const POINT& pt_win)
+static inline bool swap_scale_level(double win_ox, double win_oy)
 {
 	auto level = loupe_state.zoom.scale_level;
 	std::swap(level, loupe_state.zoom.second_level);
 
-	double ox = 0, oy = 0;
-	if (settings.commands.swap_scale_level_pivot == Settings::WheelZoom::cursor) {
-		RECT rc; ::GetClientRect(hwnd, &rc);
-		ox = pt_win.x - rc.right / 2.0;
-		oy = pt_win.y - rc.bottom / 2.0;
-	}
-	return apply_zoom(hwnd, level, ox, oy);
+	if (settings.commands.swap_scale_level_pivot == Settings::WheelZoom::center)
+		win_ox = win_oy = 0;
+	return apply_zoom(level, win_ox, win_oy);
 }
 template<class... TArgs>
 static bool copy_text(size_t len, const wchar_t* fmt, const TArgs&... args)
@@ -1141,11 +1163,9 @@ static bool copy_text(size_t len, const wchar_t* fmt, const TArgs&... args)
 	::CloseClipboard();
 	return success;
 }
-// copies the color code to the clipboard.
-static inline bool copy_color_code(HWND hwnd, const POINT& pt_win)
+static inline bool copy_color_code(double win_ox, double win_oy)
 {
-	RECT rc; ::GetClientRect(hwnd, &rc);
-	auto [x, y] = loupe_state.win2pic(pt_win.x - rc.right / 2.0, pt_win.y - rc.bottom / 2.0);
+	auto [x, y] = loupe_state.win2pic(win_ox, win_oy);
 	auto color = image.color_at(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y))).to_formattable();
 	if (color > 0xffffff) return false;
 
@@ -1153,7 +1173,7 @@ static inline bool copy_color_code(HWND hwnd, const POINT& pt_win)
 
 	// toast message.
 	if (!settings.toast.notify_clipboard) return false;
-	loupe_state.toast.set_message(hwnd, settings.toast.duration, IDS_TOAST_CLIPBOARD, color);
+	toast_manager.set_message(settings.toast.duration, IDS_TOAST_CLIPBOARD, color);
 	return true;
 }
 
@@ -1181,14 +1201,9 @@ struct Menu {
 	{
 		// returns true if needs redraw.
 		switch (id) {
-		case IDM_CXT_FOLLOW_CURSOR:						return toggle_follow_cursor(hwnd);
-		case IDM_CXT_SHOW_GRID:							return toggle_grid(hwnd);
-		case IDM_CXT_SWAP_SCALE:
-		{
-			RECT rc;
-			::GetClientRect(hwnd, &rc);
-			return swap_scale_level(hwnd, { rc.right / 2, rc.bottom / 2 });
-		}
+		case IDM_CXT_FOLLOW_CURSOR:						return toggle_follow_cursor();
+		case IDM_CXT_SHOW_GRID:							return toggle_grid();
+		case IDM_CXT_SWAP_SCALE:						return swap_scale_level(0, 0);
 		case IDM_CXT_CENTRALIZE:						return centralize();
 		case IDM_CXT_REVERSE_WHEEL:
 			settings.loupe_drag.wheel.reverse_wheel		^= true;
@@ -1223,13 +1238,19 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, PO
 {
 	if (!image.is_valid()) return false;
 
+	auto center_pt = [&](auto fn) {
+		RECT rc;
+		::GetClientRect(hwnd, &rc);
+		return fn(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+	};
+
 	switch (cmd) {
 		using ca = Settings::ClickActions;
-	case ca::centralize: return centralize();
-	case ca::toggle_follow_cursor: return toggle_follow_cursor(hwnd);
-	case ca::swap_scale_level: return swap_scale_level(hwnd, pt);
-	case ca::toggle_grid: return toggle_grid(hwnd);
-	case ca::copy_color_code: return copy_color_code(hwnd, pt);
+	case ca::centralize:			return centralize();
+	case ca::toggle_follow_cursor:	return toggle_follow_cursor();
+	case ca::swap_scale_level:		return center_pt(swap_scale_level);
+	case ca::toggle_grid:			return toggle_grid();
+	case ca::copy_color_code:		return center_pt(copy_color_code);
 	case ca::context_menu:
 		::ClientToScreen(hwnd, &pt);
 		Menu::popup_menu(hwnd, pt);
@@ -1277,10 +1298,16 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 		// find exedit.
 		exedit_drag.init(fp);
+
+		// register as the timer destination.
+		toast_manager.set_destination(hwnd);
 		break;
 
 	case FilterMessage::Exit:
-		if (loupe_state.toast.visible) loupe_state.toast.on_timeout(hwnd);
+		// unregister from the timer destination.
+		toast_manager.set_destination(nullptr);
+
+		// make sure new allocation would no longer occur.
 		ext_obj.deactivate();
 
 		// save settings.
@@ -1316,8 +1343,8 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 	case WM_TIMER:
 		// update of the toast message to dissapear.
-		if (static_cast<UINT_PTR>(wparam) == loupe_state.toast.timer_id()) {
-			loupe_state.toast.on_timeout(hwnd);
+		if (static_cast<UINT_PTR>(wparam) == toast_manager.timer_id()) {
+			toast_manager.on_timer();
 			cxt.redraw_loupe = image.is_valid();
 		}
 		break;
@@ -1425,7 +1452,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			}
 
 			// then apply the zoom.
-			if (apply_zoom(hwnd, loupe_state.zoom.scale_level + delta, ox, oy))
+			if (apply_zoom(loupe_state.zoom.scale_level + delta, ox, oy))
 				cxt.redraw_loupe = true;
 		}
 		break;
