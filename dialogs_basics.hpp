@@ -35,11 +35,11 @@ namespace dialogs::basics
 			if (message == WM_INITDIALOG) {
 				auto that = reinterpret_cast<dialog_base*>(lparam);
 				that->hwnd = hwnd;
-				::SetPropW(hwnd, prop_name, reinterpret_cast<HANDLE>(that));
+				::SetWindowLongW(hwnd, GWL_USERDATA, reinterpret_cast<LONG>(that));
 				ret = that->on_init(reinterpret_cast<HWND>(wparam));
 			}
 			else {
-				auto that = reinterpret_cast<dialog_base*>(::GetPropW(hwnd, prop_name));
+				auto that = reinterpret_cast<dialog_base*>(::GetWindowLongW(hwnd, GWL_USERDATA));
 				if (that == nullptr || that->no_callback || that->hwnd == nullptr) return FALSE;
 
 				ret = that->handler(message, wparam, lparam);
@@ -48,11 +48,10 @@ namespace dialogs::basics
 
 			return ret ? TRUE : FALSE;
 		}
-		constexpr static auto prop_name = L"this";
 		bool no_callback = false;
 
 	protected:
-		virtual const wchar_t* template_id() const = 0;
+		virtual uintptr_t template_id() const = 0;
 		virtual bool on_init(HWND def_control) = 0;
 		virtual bool handler(UINT message, WPARAM wparam, LPARAM lparam) = 0;
 
@@ -118,17 +117,21 @@ namespace dialogs::basics
 		HWND hwnd = nullptr;
 		void create(HWND parent)
 		{
-			::CreateDialogParamW(this_dll, template_id(), parent, proc, reinterpret_cast<LPARAM>(this));
+			::CreateDialogParamW(this_dll, MAKEINTRESOURCEW(template_id()), parent, proc, reinterpret_cast<LPARAM>(this));
 		}
 		intptr_t modal(HWND parent)
 		{
 			// TODO: find the top-level window containing `parent`,
 			// for the cases like SplitWindow or Nest is applied.
-			return ::DialogBoxParamW(this_dll, template_id(), parent, proc, reinterpret_cast<LPARAM>(this));
+			return ::DialogBoxParamW(this_dll, MAKEINTRESOURCEW(template_id()), parent, proc, reinterpret_cast<LPARAM>(this));
 		}
 
-		// make sure derived classes finalize their fields.
-		virtual ~dialog_base() {}
+		virtual ~dialog_base() {
+			if (hwnd != nullptr) {
+				::DestroyWindow(hwnd);
+				hwnd = nullptr;
+			}
+		}
 	};
 
 
@@ -136,11 +139,9 @@ namespace dialogs::basics
 	// Scroll Viewer.
 	////////////////////////////////
 	class vscroll_form : public dialog_base {
-		int prev_scroll_pos = 0;
+		int prev_scroll_pos = -1;
 	protected:
-		const wchar_t* template_id() const override {
-			return MAKEINTRESOURCEW(IDD_VSCROLLFORM);
-		}
+		uintptr_t template_id() const override { return IDD_VSCROLLFORM; }
 
 		bool on_init(HWND) override
 		{
@@ -152,23 +153,17 @@ namespace dialogs::basics
 				::ShowWindow(child.inst->hwnd, SW_SHOW);
 			}
 
-			// measure all children by updating the size and scroll.
-			RECT rc;
-			::GetClientRect(hwnd, &rc);
-			::SendMessageW(hwnd, WM_SIZE, 0, (0xffff & rc.right) | (rc.bottom << 16));
-			::SendMessageW(hwnd, WM_VSCROLL, SB_THUMBTRACK, {});
-
-			//// show all children.
-			//for (auto& child : children)
-			//	::ShowWindow(child.inst->hwnd, SW_SHOW);
+			// no default control to focus.
 			return false;
 		}
 
-		void on_scroll(int pos) {
+		void on_scroll(int pos, bool force = false) {
 			auto diff = prev_scroll_pos - pos;
+			if (!force && diff == 0) return;
+
 			prev_scroll_pos = pos;
 			for (auto& child : children) {
-				if (diff > 0) {
+				if (!force && diff > 0) {
 					// to prevent wrong drawings.
 					RECT rc{ 0, 0, child.w, diff };
 					::InvalidateRect(child.inst->hwnd, &rc, FALSE);
@@ -177,9 +172,9 @@ namespace dialogs::basics
 			}
 		}
 
-		void  on_resize(int w, int h)
+		void on_resize(int w, int h)
 		{
-			auto sw = ::GetSystemMetrics(SM_CXVSCROLL);
+			auto const sw = ::GetSystemMetrics(SM_CXVSCROLL);
 
 			// calculate the layout.
 			auto max_w = w - sw;
@@ -199,18 +194,15 @@ namespace dialogs::basics
 
 				tot_w += W;
 				max_h = std::max(max_h, H);
+
+				::InvalidateRect(child.inst->hwnd, nullptr, FALSE);
 			}
 
-			// set the scroll range.
+			// set the scroll range and redraw.
 			SCROLLINFO si{ .cbSize = sizeof(si), .fMask = SIF_RANGE | SIF_PAGE };
 			si.nMin = 0; si.nMax = tot_h + max_h;
 			si.nPage = h;
-			::SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
-
-			// redraw.
-			si.fMask = SIF_POS;
-			::GetScrollInfo(hwnd, SB_VERT, &si);
-			on_scroll(si.nPos);
+			on_scroll(::SetScrollInfo(hwnd, SB_VERT, &si, TRUE), true);
 		}
 
 		bool handler(UINT message, WPARAM wparam, LPARAM lparam)
@@ -221,8 +213,7 @@ namespace dialogs::basics
 				return true;
 			case WM_VSCROLL:
 			{
-				SCROLLINFO si{ .cbSize = sizeof(si), .fMask = SIF_ALL };
-				::GetScrollInfo(hwnd, SB_VERT, &si);
+				SCROLLINFO si = get_scroll_info(SIF_POS | SIF_RANGE | SIF_PAGE);
 				auto code = 0xffff & wparam;
 				switch (code) {
 				case SB_THUMBPOSITION:
@@ -236,48 +227,57 @@ namespace dialogs::basics
 				case SB_PAGEDOWN:	si.nPos += si.nPage;	break;
 				case SB_TOP:		si.nPos = si.nMin;		break;
 				case SB_BOTTOM:		si.nPos = si.nMax;		break;
+				default: return false; // includes SB_ENDSCROLL.
 				}
-				si.nPos = std::clamp<int>(si.nPos, si.nMin, si.nMax - si.nPage);
+				si.nPos = std::clamp(si.nPos, si.nMin, std::max<int>(0, si.nMax - si.nPage));
 				if (code != SB_THUMBTRACK) {
 					si.fMask = SIF_POS;
-					::SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
+					si.nPos = ::SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
 				}
 				on_scroll(si.nPos);
 				return true;
 			}
 			case WM_MOUSEWHEEL:
 			{
-				constexpr size_t def_wheel_amount = 120;
-
-				SCROLLINFO si{ .cbSize = sizeof(si), .fMask = SIF_ALL };
-				::GetScrollInfo(hwnd, SB_VERT, &si);
+				constexpr int def_wheel_delta = 120;
 				auto wheel_delta = static_cast<int16_t>(wparam >> 16);
-				si.nPos -= wheel_delta * scroll_wheel / def_wheel_amount;
-				si.nPos = std::clamp<int>(si.nPos, si.nMin, si.nMax - si.nPage);
-				::SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
-				on_scroll(si.nPos);
+
+				set_scroll_pos(get_scroll_pos() - scroll_wheel * wheel_delta / def_wheel_delta);
 				return true;
 			}
 			}
 			return false;
 		}
 	public:
-		size_t scroll_delta = 8, scroll_wheel = 32;
+		int scroll_delta = 8, scroll_wheel = 32;
 
 	private:
 		struct child {
-			std::unique_ptr<dialog_base> inst{};
-			int x = 0, y = 0, w = 0, h = 0;
+			std::unique_ptr<dialog_base> inst;
+			int x, y, w, h;
+			child(dialog_base* ptr) : inst{ ptr } { x = y = w = h = 0; }
 		};
 		std::vector<child> children;
 
 	public:
-		// children are of the type dialog_base*.
-		vscroll_form(auto*... children)
+		vscroll_form(std::initializer_list<dialog_base*> children)
 		{
-			this->children.resize(sizeof...(children));
-			int i = 0;
-			(this->children[i++].inst.reset(children), ...);
+			this->children.reserve(children.size());
+			for (auto* child : children) this->children.emplace_back(child);
+		}
+
+		bool get_scroll_info(SCROLLINFO& si) { return ::GetScrollInfo(hwnd, SB_VERT, &si) != FALSE; }
+		SCROLLINFO get_scroll_info(UINT flags = SIF_ALL) {
+			SCROLLINFO si{ .cbSize = sizeof(si), .fMask = flags };
+			get_scroll_info(si);
+			return si;
+		}
+		int get_scroll_pos() { return get_scroll_info(SIF_POS).nPos; }
+		int set_scroll_pos(int pos) {
+			SCROLLINFO si{ .cbSize = sizeof(si), .fMask = SIF_POS, .nPos = pos };
+			int ret = ::SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
+			on_scroll(ret);
+			return ret;
 		}
 	};
 }

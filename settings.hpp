@@ -27,22 +27,11 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 ////////////////////////////////
 inline constinit struct Settings {
 	using Color = sigma_lib::W32::GDI::Color;
+	using MouseButton = sigma_lib::W32::custom::mouse::MouseButton;
 	using RailMode = sigma_lib::W32::custom::mouse::RailMode;
 	using DragInvalidRange = sigma_lib::W32::custom::mouse::DragInvalidRange;
 
-	enum class ZoomPivot : uint8_t {
-		center = 0, cursor = 1,
-	};
-
 	struct KeysActivate {
-		enum MouseButton : uint8_t {
-			none	= 0,
-			left	= 1,
-			right	= 2,
-			middle	= 3,
-			x1		= 4,
-			x2		= 5,
-		};
 		enum State : int8_t {
 			off	= 0,
 			on	= 1,
@@ -61,7 +50,7 @@ inline constinit struct Settings {
 					return true;
 				}
 			};
-			return button != none
+			return button != MouseButton::none
 				&& this->button == button
 				&& req(this->ctrl,	ctrl)
 				&& req(this->shift,	shift)
@@ -69,24 +58,28 @@ inline constinit struct Settings {
 		}
 	};
 
-	struct ZoomBehavior {
+	struct WheelZoom {
+		enum Pivot : uint8_t { center = 0, cursor = 1, };
+
 		bool enabled, reverse_wheel;
-		ZoomPivot pivot;
+		Pivot pivot;
+
+		// TODO: add a field "zoom speed".
 	};
 
 	struct LoupeDrag {
-		KeysActivate keys{ KeysActivate::left, KeysActivate::dontcare, KeysActivate::dontcare, KeysActivate::off };
+		KeysActivate keys{ MouseButton::left, KeysActivate::dontcare, KeysActivate::dontcare, KeysActivate::off };
 		DragInvalidRange range{ .distance = 2, .timespan = 800 };
-		ZoomBehavior zoom{ true, false, ZoomPivot::cursor };
+		WheelZoom wheel{ true, false, WheelZoom::cursor };
 
 		bool lattice = false;
 		RailMode rail_mode = RailMode::cross;
 	} loupe_drag;
 
 	struct TipDrag {
-		KeysActivate keys{ KeysActivate::left, KeysActivate::off, KeysActivate::dontcare, KeysActivate::dontcare };
+		KeysActivate keys{ MouseButton::left, KeysActivate::off, KeysActivate::dontcare, KeysActivate::dontcare };
 		DragInvalidRange range = DragInvalidRange::AlwaysValid();
-		ZoomBehavior zoom{ true, false, ZoomPivot::cursor };
+		WheelZoom wheel{ true, false, WheelZoom::cursor };
 
 		enum Mode : uint8_t {
 			frail = 0, stationary = 1, sticky = 2,
@@ -108,9 +101,9 @@ inline constinit struct Settings {
 	} tip_drag{};
 
 	struct ExEditDrag {
-		KeysActivate keys{ KeysActivate::left, KeysActivate::on, KeysActivate::dontcare, KeysActivate::dontcare };
+		KeysActivate keys{ MouseButton::left, KeysActivate::on, KeysActivate::dontcare, KeysActivate::dontcare };
 		DragInvalidRange range{ .distance = 2, .timespan = 800 };
-		ZoomBehavior zoom{ true, false, ZoomPivot::cursor };
+		WheelZoom wheel{ true, false, WheelZoom::cursor };
 
 		enum KeyDisguise : uint8_t {
 			flat	= 0,
@@ -121,11 +114,18 @@ inline constinit struct Settings {
 		KeyDisguise shift = flat, alt = off; // no ctrl key; it's kind of special.
 	} exedit_drag;
 
-	ZoomBehavior mouse_wheel{
-		.enabled		= true,
-		.reverse_wheel	= false,
-		.pivot			= ZoomPivot::center,
-	};
+	struct ZoomBehavior {
+		WheelZoom wheel{
+			.enabled = true,
+			.reverse_wheel = false,
+			.pivot = WheelZoom::center,
+		};
+		int8_t min_scale_level = min_scale_level_min,
+			max_scale_level = max_scale_level_max;
+
+		constexpr static int8_t min_scale_level_min = -13, min_scale_level_max = 20;
+		constexpr static int8_t max_scale_level_min = -13, max_scale_level_max = 20;
+	} zoom;
 
 	struct ColorScheme {
 		Color
@@ -151,9 +151,11 @@ inline constinit struct Settings {
 		bool notify_clipboard = true;
 
 		enum class Placement : uint8_t {
-			center = 0, left_top = 1, right_top = 2, right_bottom = 3, left_bottom = 4,
+			top_left = 0, top = 1, top_right = 2,
+			left = 3, center = 4, right = 5,
+			bottom_left = 6, bottom = 7, bottom_right = 8,
 		};
-		Placement placement = Placement::right_bottom;
+		Placement placement = Placement::bottom_right;
 
 		enum class ScaleFormat : uint8_t {
 			fraction = 0, decimal = 1, percent = 2,
@@ -177,8 +179,11 @@ inline constinit struct Settings {
 	struct Grid {
 		int8_t least_scale_thin = 8;
 		int8_t least_scale_thick = 12;
-		constexpr static int8_t least_scale_thin_min	= 6, least_scale_thin_max	= 21;
-		constexpr static int8_t least_scale_thick_min	= 6, least_scale_thick_max	= 21;
+		constexpr static int8_t
+			least_scale_thin_min	= 6, // x 3.00
+			least_scale_thin_max	= ZoomBehavior::max_scale_level_max + 1,
+			least_scale_thick_min	= least_scale_thin_min,
+			least_scale_thick_max	= least_scale_thin_max;
 
 		// 0: no grid, 1: thin grid, 2: thick grid.
 		uint8_t grid_thick(int scale_level) const {
@@ -198,6 +203,7 @@ inline constinit struct Settings {
 			context_menu = 5,
 			toggle_grid = 6,
 			settings = 7,
+			// scale_step_up, scale_step_down
 		};
 		Command
 			left_click		= none,
@@ -212,7 +218,7 @@ inline constinit struct Settings {
 			x1_dblclk		= none,
 			x2_dblclk		= none;
 
-		ZoomPivot swap_scale_level_pivot = ZoomPivot::cursor;
+		WheelZoom::Pivot swap_scale_level_pivot = WheelZoom::cursor;
 	} commands;
 
 	// loading from .ini file.
@@ -239,9 +245,9 @@ inline constinit struct Settings {
 		load_enum(section, keys.alt);\
 		load_int(section, range.distance); \
 		load_int(section, range.timespan);\
-		load_bool(section, zoom.enabled);\
-		load_bool(section, zoom.reverse_wheel);\
-		load_enum(section, zoom.pivot)
+		load_bool(section, wheel.enabled);\
+		load_bool(section, wheel.reverse_wheel);\
+		load_enum(section, wheel.pivot)
 
 		load_drag(loupe_drag);
 		load_bool(loupe_drag, lattice);
@@ -259,9 +265,11 @@ inline constinit struct Settings {
 		load_enum(exedit_drag, shift);
 		load_enum(exedit_drag, alt);
 
-		load_bool(mouse_wheel, enabled);
-		load_bool(mouse_wheel, reverse_wheel);
-		load_enum(mouse_wheel, pivot);
+		load_bool(zoom, wheel.enabled);
+		load_bool(zoom, wheel.reverse_wheel);
+		load_enum(zoom, wheel.pivot);
+		load_int(zoom, min_scale_level);
+		load_int(zoom, max_scale_level);
 
 		load_color(color, chrome);
 		load_color(color, back_top);
@@ -333,9 +341,9 @@ inline constinit struct Settings {
 		save_dec(section, keys.alt);\
 		save_dec(section, range.distance); \
 		save_dec(section, range.timespan);\
-		save_bool(section, zoom.enabled);\
-		save_bool(section, zoom.reverse_wheel);\
-		save_dec(section, zoom.pivot)
+		save_bool(section, wheel.enabled);\
+		save_bool(section, wheel.reverse_wheel);\
+		save_dec(section, wheel.pivot)
 
 		save_drag(loupe_drag);
 		save_dec(loupe_drag, lattice);
@@ -353,9 +361,11 @@ inline constinit struct Settings {
 		save_dec(exedit_drag, shift);
 		save_dec(exedit_drag, alt);
 
-		save_bool(mouse_wheel, enabled);
-		save_bool(mouse_wheel, reverse_wheel);
-		save_dec(mouse_wheel, pivot);
+		save_bool(zoom, wheel.enabled);
+		save_bool(zoom, wheel.reverse_wheel);
+		save_dec(zoom, wheel.pivot);
+		save_dec(zoom, min_scale_level);
+		save_dec(zoom, max_scale_level);
 
 		//save_color(color, chrome);
 		//save_color(color, back_top);
@@ -406,4 +416,8 @@ inline constinit struct Settings {
 #undef save_dec
 #undef save_gen
 	}
+
+	struct HelperFunctions {
+		static std::tuple<int, int> ZoomScaleFromLevel(int scale_level);
+	};
 } settings;

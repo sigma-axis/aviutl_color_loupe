@@ -25,6 +25,14 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 ////////////////////////////////
 namespace sigma_lib::W32::custom::mouse
 {
+	enum class MouseButton : uint8_t {
+		none = 0,
+		left = 1,
+		right = 2,
+		middle = 3,
+		x1 = 4,
+		x2 = 5,
+	};
 	enum class RailMode : uint8_t {
 		none = 0, cross = 1, octagonal = 2,
 	};
@@ -125,6 +133,8 @@ namespace sigma_lib::W32::custom::mouse
 		}
 
 	public:
+		// TODO: rename functions below so they don't have the prefix `Drag` (and `_core` variants).
+		// TODO: add a function that forces the `validated` state.
 		// returns true if the dragging is made ready.
 		bool DragStart(HWND hwnd, const POINT& drag_start, context& cxt)
 		{
@@ -154,12 +164,12 @@ namespace sigma_lib::W32::custom::mouse
 			}
 		}
 		// returns true if the dragging operation has been properly processed.
-		static bool DragDelta(const POINT& curr, context& cxt, bool force = false)
+		static bool DragDelta(const POINT& curr, context& cxt)
 		{
 			if (!is_dragging(cxt)) return false;
 
 			// ignore the input until it exceeds a certain range.
-			if (!was_validated && (force || check_is_valid(curr))) {
+			if (!was_validated && check_is_valid(curr)) {
 				was_validated = true;
 				current->DragStart_core(cxt);
 			}

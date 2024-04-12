@@ -58,8 +58,8 @@ static inline constinit struct LoupeState {
 	struct {
 		int scale_level, second_level;
 		constexpr static int scale_level_min = -13, scale_level_max = 20;
-		static_assert(scale_level_max < settings.grid.least_scale_thin_max);
-		static_assert(scale_level_max < settings.grid.least_scale_thick_max);
+		static_assert(scale_level_max == Settings::ZoomBehavior::max_scale_level_max);
+		static_assert(scale_level_min == Settings::ZoomBehavior::min_scale_level_min);
 
 	private:
 		constexpr static int scale_denominator = 4;
@@ -208,6 +208,11 @@ static inline constinit struct LoupeState {
 		tip_state = { .x = w2, .y = h2, .visible_level = 0 };
 	}
 } loupe_state;
+
+// define a function to export.
+std::tuple<int, int> Settings::HelperFunctions::ZoomScaleFromLevel(int scale_level) {
+	return decltype(loupe_state.zoom)::scale_ratio_Q(scale_level);
+}
 
 
 ////////////////////////////////
@@ -591,22 +596,23 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 	auto l = rc_txt.right - rc_txt.left;
 	switch (settings.toast.placement) {
 		using enum Settings::Toast::Placement;
-	case left_top:
-	case left_bottom:
+	case top_left:
+	case left:
+	case bottom_left:
 		rc_frm.left = margin;
 		goto from_left;
-	case right_top:
-	case right_bottom:
+	case top_right:
+	case right:
+	case bottom_right:
 		rc_frm.right = wd - margin;
 		rc_txt.right = rc_frm.right - pad_x;
 		rc_txt.left = rc_txt.right - l;
 		rc_frm.left = rc_txt.left - pad_x;
 		break;
-	case center:
 	default:
-		rc_txt.left = wd / 2 - l / 2;
+		rc_frm.left = wd / 2 - l / 2 - pad_x;
 	from_left:
-		rc_frm.left = rc_txt.left - pad_x;
+		rc_txt.left = rc_frm.left + pad_x;
 		rc_txt.right = rc_txt.left + l;
 		rc_frm.right = rc_txt.right + pad_x;
 		break;
@@ -616,22 +622,23 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 	l = rc_txt.bottom - rc_txt.top;
 	switch (settings.toast.placement) {
 		using enum Settings::Toast::Placement;
-	case left_top:
-	case right_top:
+	case top_left:
+	case top:
+	case top_right:
 		rc_frm.top = margin;
 		goto from_top;
-	case right_bottom:
-	case left_bottom:
+	case bottom_left:
+	case bottom:
+	case bottom_right:
 		rc_frm.bottom = ht - margin;
 		rc_txt.bottom = rc_frm.bottom - pad_y;
 		rc_txt.top = rc_txt.bottom - l;
 		rc_frm.top = rc_txt.top - pad_y;
 		break;
-	case center:
 	default:
-		rc_txt.top = ht / 2 - l / 2;
+		rc_frm.top = ht / 2 - l / 2 - pad_y;
 	from_top:
-		rc_frm.top = rc_txt.top - pad_y;
+		rc_txt.top = rc_frm.top + pad_y;
 		rc_txt.bottom = rc_txt.top + l;
 		rc_frm.bottom = rc_txt.bottom + pad_y;
 		break;
@@ -746,14 +753,14 @@ protected:
 	void DragAbort_core(context& cxt) override { DragCancel_core(cxt); }
 
 	virtual Settings::KeysActivate KeysActivate() { return {}; }
-	virtual Settings::ZoomBehavior ZoomBehavior() { return settings.mouse_wheel; }
+	virtual Settings::WheelZoom WheelZoom() { return settings.zoom.wheel; }
 
 public:
 	static void InitiateDrag(HWND hwnd, const POINT& drag_start, context& cxt);
-	static Settings::ZoomBehavior CurrentZoomBehavior() {
+	static Settings::WheelZoom CurrentWheelZoom() {
 		auto* drag = current_drag<DragState>();
-		if (drag == nullptr) return settings.mouse_wheel;
-		return drag->ZoomBehavior();
+		if (drag == nullptr) return settings.zoom.wheel;
+		return drag->WheelZoom();
 	}
 };
 
@@ -803,7 +810,7 @@ protected:
 
 	DragInvalidRange InvalidRange() override { return settings.loupe_drag.range; }
 	Settings::KeysActivate KeysActivate() override { return settings.loupe_drag.keys; }
-	Settings::ZoomBehavior ZoomBehavior() override { return settings.loupe_drag.zoom; }
+	Settings::WheelZoom WheelZoom() override { return settings.loupe_drag.wheel; }
 } loupe_drag;
 
 static inline constinit class : public DragState {
@@ -877,7 +884,7 @@ protected:
 
 	DragInvalidRange InvalidRange() override { return settings.tip_drag.range; }
 	Settings::KeysActivate KeysActivate() override { return settings.tip_drag.keys; }
-	Settings::ZoomBehavior ZoomBehavior() override { return settings.tip_drag.zoom; }
+	Settings::WheelZoom WheelZoom() override { return settings.tip_drag.wheel; }
 } tip_drag;
 
 static inline constinit class : public DragState {
@@ -997,7 +1004,7 @@ protected:
 
 	DragInvalidRange InvalidRange() override { return settings.exedit_drag.range; }
 	Settings::KeysActivate KeysActivate() override { return settings.exedit_drag.keys; }
-	Settings::ZoomBehavior ZoomBehavior() override { return settings.exedit_drag.zoom; }
+	Settings::WheelZoom WheelZoom() override { return settings.exedit_drag.wheel; }
 } exedit_drag;
 
 static inline constinit VoidDrag<DragState> void_drag;
@@ -1007,7 +1014,7 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 	constexpr WPARAM btns = MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2;
 	auto btn = [&] {
 		switch (cxt.wparam & btns) {
-			using enum Settings::KeysActivate::MouseButton;
+			using enum MouseButton;
 		case MK_LBUTTON:	return left;
 		case MK_RBUTTON:	return right;
 		case MK_MBUTTON:	return middle;
@@ -1016,7 +1023,7 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 		default:			return none; // no button or multiple buttons.
 		}
 	}();
-	if (btn == Settings::KeysActivate::none) return;
+	if (btn == MouseButton::none) return;
 
 	bool ctrl = (cxt.wparam & MK_CONTROL) != 0,
 		shift = (cxt.wparam & MK_SHIFT) != 0,
@@ -1040,6 +1047,8 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 ////////////////////////////////
 // その他コマンド．
 ////////////////////////////////
+
+// TODO: refactor those functions below.
 
 // all commands below assumes image.is_valid() is true.
 // returns true if the window needs redrawing.
@@ -1072,7 +1081,9 @@ static inline bool toggle_grid(HWND hwnd)
 }
 static inline bool apply_zoom(HWND hwnd, int new_level, double win_ox, double win_oy)
 {
-	loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
+	loupe_state.apply_zoom(
+		std::clamp<int>(new_level, settings.zoom.min_scale_level, settings.zoom.max_scale_level),
+		win_ox, win_oy, image.width(), image.height());
 
 	// toast message.
 	if (!settings.toast.notify_scale) return false;
@@ -1103,7 +1114,7 @@ static inline bool swap_scale_level(HWND hwnd, const POINT& pt_win)
 	std::swap(level, loupe_state.zoom.second_level);
 
 	double ox = 0, oy = 0;
-	if (settings.commands.swap_scale_level_pivot == Settings::ZoomPivot::cursor) {
+	if (settings.commands.swap_scale_level_pivot == Settings::WheelZoom::cursor) {
 		RECT rc; ::GetClientRect(hwnd, &rc);
 		ox = pt_win.x - rc.right / 2.0;
 		oy = pt_win.y - rc.bottom / 2.0;
@@ -1159,29 +1170,10 @@ struct Menu {
 		// prepare the context menu.
 		chk(IDM_CXT_FOLLOW_CURSOR,					loupe_state.position.follow_cursor);
 		chk(IDM_CXT_SHOW_GRID,						loupe_state.grid.visible);
-		chk(IDM_CXT_REVERSE_WHEEL,					settings.mouse_wheel.reverse_wheel);
-		chk(IDM_CXT_LATTICE,						settings.loupe_drag.lattice);
-		chk(IDM_CXT_RAIL_NONE,						settings.loupe_drag.rail_mode	== RailMode::none);
-		chk(IDM_CXT_RAIL_CROSS,						settings.loupe_drag.rail_mode	== RailMode::cross);
-		chk(IDM_CXT_RAIL_OCTAGONAL,					settings.loupe_drag.rail_mode	== RailMode::octagonal);
 		chk(IDM_CXT_TIP_MODE_FRAIL,					settings.tip_drag.mode				== Settings::TipDrag::frail);
 		chk(IDM_CXT_TIP_MODE_STATIONARY,			settings.tip_drag.mode				== Settings::TipDrag::stationary);
 		chk(IDM_CXT_TIP_MODE_STICKY,				settings.tip_drag.mode				== Settings::TipDrag::sticky);
-		chk(IDM_CXT_TIP_RAIL_NONE,					settings.tip_drag.rail_mode			== RailMode::none);
-		chk(IDM_CXT_TIP_RAIL_CROSS,					settings.tip_drag.rail_mode			== RailMode::cross);
-		chk(IDM_CXT_TIP_RAIL_OCTAGONAL,				settings.tip_drag.rail_mode			== RailMode::octagonal);
-		chk(IDM_CXT_TOAST_NOTIFY_SCALE,				settings.toast.notify_scale);
-		chk(IDM_CXT_TOAST_NOTIFY_FOLLOW_CURSOR,		settings.toast.notify_follow_cursor);
-		chk(IDM_CXT_TOAST_NOTIFY_TOGGLE_GRID,		settings.toast.notify_grid);
-		chk(IDM_CXT_TOAST_NOTIFY_CLIPBOARD,			settings.toast.notify_clipboard);
-		chk(IDM_CXT_TOAST_PLACEMENT_CENTER,			settings.toast.placement		== Settings::Toast::Placement::center);
-		chk(IDM_CXT_TOAST_PLACEMENT_LEFT_TOP,		settings.toast.placement		== Settings::Toast::Placement::left_top);
-		chk(IDM_CXT_TOAST_PLACEMENT_RIGHT_TOP,		settings.toast.placement		== Settings::Toast::Placement::right_top);
-		chk(IDM_CXT_TOAST_PLACEMENT_RIGHT_BOTTOM,	settings.toast.placement		== Settings::Toast::Placement::right_bottom);
-		chk(IDM_CXT_TOAST_PLACEMENT_LEFT_BOTTOM,	settings.toast.placement		== Settings::Toast::Placement::left_bottom);
-		chk(IDM_CXT_TOAST_SCALE_FMT_FRAC,			settings.toast.scale_format		== Settings::Toast::ScaleFormat::fraction);
-		chk(IDM_CXT_TOAST_SCALE_FMT_DEC,			settings.toast.scale_format		== Settings::Toast::ScaleFormat::decimal);
-		chk(IDM_CXT_TOAST_SCALE_FMT_PCT,			settings.toast.scale_format		== Settings::Toast::ScaleFormat::percent);
+		chk(IDM_CXT_REVERSE_WHEEL,					settings.zoom.wheel.reverse_wheel);
 
 		::TrackPopupMenuEx(::GetSubMenu(cxt_menu, 0), TPM_RIGHTBUTTON, pt_screen.x, pt_screen.y, hwnd, nullptr);
 	}
@@ -1189,41 +1181,28 @@ struct Menu {
 	{
 		// returns true if needs redraw.
 		switch (id) {
-		case IDM_CXT_FOLLOW_CURSOR:					return toggle_follow_cursor(hwnd);
-		case IDM_CXT_CENTRALIZE:					return centralize();
-		case IDM_CXT_SHOW_GRID:						return toggle_grid(hwnd);
+		case IDM_CXT_FOLLOW_CURSOR:						return toggle_follow_cursor(hwnd);
+		case IDM_CXT_SHOW_GRID:							return toggle_grid(hwnd);
+		case IDM_CXT_SWAP_SCALE:
+		{
+			RECT rc;
+			::GetClientRect(hwnd, &rc);
+			return swap_scale_level(hwnd, { rc.right / 2, rc.bottom / 2 });
+		}
+		case IDM_CXT_CENTRALIZE:						return centralize();
 		case IDM_CXT_REVERSE_WHEEL:
-			settings.loupe_drag.zoom.reverse_wheel	^= true;
-			settings.tip_drag.zoom.reverse_wheel	^= true;
-			settings.exedit_drag.zoom.reverse_wheel	^= true;
-			settings.mouse_wheel.reverse_wheel		^= true;
+			settings.loupe_drag.wheel.reverse_wheel		^= true;
+			settings.tip_drag.wheel.reverse_wheel		^= true;
+			settings.exedit_drag.wheel.reverse_wheel	^= true;
+			settings.zoom.wheel.reverse_wheel			^= true;
 			break;
-		case IDM_CXT_LATTICE:						settings.loupe_drag.lattice			^= true;										break;
-		case IDM_CXT_RAIL_NONE:						settings.loupe_drag.rail_mode		= RailMode::none;								break;
-		case IDM_CXT_RAIL_CROSS:					settings.loupe_drag.rail_mode		= RailMode::cross;								break;
-		case IDM_CXT_RAIL_OCTAGONAL:				settings.loupe_drag.rail_mode		= RailMode::octagonal;							break;
-		case IDM_CXT_TIP_MODE_FRAIL:				settings.tip_drag.mode				= Settings::TipDrag::frail;						goto hide_tip_and_redraw;
-		case IDM_CXT_TIP_MODE_STATIONARY:			settings.tip_drag.mode				= Settings::TipDrag::stationary;				goto hide_tip_and_redraw;
-		case IDM_CXT_TIP_MODE_STICKY:				settings.tip_drag.mode				= Settings::TipDrag::sticky;					goto hide_tip_and_redraw;
+		case IDM_CXT_TIP_MODE_FRAIL:					settings.tip_drag.mode			= Settings::TipDrag::frail;			goto hide_tip_and_redraw;
+		case IDM_CXT_TIP_MODE_STATIONARY:				settings.tip_drag.mode			= Settings::TipDrag::stationary;	goto hide_tip_and_redraw;
+		case IDM_CXT_TIP_MODE_STICKY:					settings.tip_drag.mode			= Settings::TipDrag::sticky;		goto hide_tip_and_redraw;
 		hide_tip_and_redraw:
 			loupe_state.tip_state.visible_level = 0;
 			return true;
-		case IDM_CXT_TIP_RAIL_NONE:					settings.tip_drag.rail_mode			= RailMode::none;								break;
-		case IDM_CXT_TIP_RAIL_CROSS:				settings.tip_drag.rail_mode			= RailMode::cross;								break;
-		case IDM_CXT_TIP_RAIL_OCTAGONAL:			settings.tip_drag.rail_mode			= RailMode::octagonal;							break;
-		case IDM_CXT_TOAST_NOTIFY_SCALE:			settings.toast.notify_scale			^= true;										break;
-		case IDM_CXT_TOAST_NOTIFY_FOLLOW_CURSOR:	settings.toast.notify_follow_cursor	^= true;										break;
-		case IDM_CXT_TOAST_NOTIFY_TOGGLE_GRID:		settings.toast.notify_grid			^= true;										break;
-		case IDM_CXT_TOAST_NOTIFY_CLIPBOARD:		settings.toast.notify_clipboard		^= true;										break;
-		case IDM_CXT_TOAST_PLACEMENT_CENTER:		settings.toast.placement			= Settings::Toast::Placement::center;			break;
-		case IDM_CXT_TOAST_PLACEMENT_LEFT_TOP:		settings.toast.placement			= Settings::Toast::Placement::left_top;			break;
-		case IDM_CXT_TOAST_PLACEMENT_RIGHT_TOP:		settings.toast.placement			= Settings::Toast::Placement::right_top;		break;
-		case IDM_CXT_TOAST_PLACEMENT_RIGHT_BOTTOM:	settings.toast.placement			= Settings::Toast::Placement::right_bottom;		break;
-		case IDM_CXT_TOAST_PLACEMENT_LEFT_BOTTOM:	settings.toast.placement			= Settings::Toast::Placement::left_bottom;		break;
-		case IDM_CXT_TOAST_SCALE_FMT_FRAC:			settings.toast.scale_format			= Settings::Toast::ScaleFormat::fraction;		break;
-		case IDM_CXT_TOAST_SCALE_FMT_DEC:			settings.toast.scale_format			= Settings::Toast::ScaleFormat::decimal;		break;
-		case IDM_CXT_TOAST_SCALE_FMT_PCT:			settings.toast.scale_format			= Settings::Toast::ScaleFormat::percent;		break;
-		case IDM_CXT_SETTINGS:						dialogs::open_settings(hwnd);														break;
+		case IDM_CXT_SETTINGS:							dialogs::open_settings(hwnd);										break;
 		default: break;
 		}
 		return false;
@@ -1426,7 +1405,10 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_MOUSEWHEEL:
 		// wheel to zoom in/out.
 		if (image.is_valid()) {
-			auto zoom = DragState::CurrentZoomBehavior();
+			auto zoom = DragState::CurrentWheelZoom();
+			if (!zoom.enabled) break;
+
+			// TODO: force the drag state "valid".
 
 			// reverse wheel if necessary.
 			int delta = ((static_cast<int16_t>(wparam >> 16) < 0) == zoom.reverse_wheel)
@@ -1434,7 +1416,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 			// take the pivot into account.
 			double ox = 0, oy = 0;
-			if (Settings::ZoomPivot::cursor == zoom.pivot) {
+			if (Settings::WheelZoom::cursor == zoom.pivot) {
 				auto pt = cursor_pos(lparam);
 				::ScreenToClient(hwnd, &pt);
 				RECT rc; ::GetClientRect(hwnd, &rc);
@@ -1539,7 +1521,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha2"
+#define PLUGIN_VERSION	"v2.00-alpha3"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
