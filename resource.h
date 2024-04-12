@@ -49,20 +49,24 @@
 #define IDC_SLIDER2                     1025
 #define IDM_CXT_FOLLOW_CURSOR           40001
 #define IDM_CXT_SHOW_GRID               40002
-#define IDM_CXT_SWAP_SCALE				40003
+#define IDM_CXT_SWAP_SCALE              40003
 #define IDM_CXT_CENTRALIZE              40004
-#define IDM_CXT_TIP_MODE_FRAIL          40005
-#define IDM_CXT_TIP_MODE_STATIONARY     40006
-#define IDM_CXT_TIP_MODE_STICKY         40007
-#define IDM_CXT_REVERSE_WHEEL           40008
-#define IDM_CXT_SETTINGS                40009
+#define IDM_CXT_PT_COPY_COLOR           40005
+#define IDM_CXT_PT_MOVE_CENTER          40006
+#define IDM_CXT_PT_COPY_COORD_TL        40007
+#define IDM_CXT_PT_COPY_COORD_C         40008
+#define IDM_CXT_TIP_MODE_FRAIL          40009
+#define IDM_CXT_TIP_MODE_STATIONARY     40010
+#define IDM_CXT_TIP_MODE_STICKY         40011
+#define IDM_CXT_REVERSE_WHEEL           40012
+#define IDM_CXT_SETTINGS                40013
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        121
-#define _APS_NEXT_COMMAND_VALUE         40010
+#define _APS_NEXT_COMMAND_VALUE         40014
 #define _APS_NEXT_CONTROL_VALUE         1026
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

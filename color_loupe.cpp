@@ -400,6 +400,7 @@ public:
 static inline constinit class ToastManager {
 	HWND hwnd = nullptr;
 	bool active = false;
+	constexpr static auto& toast = loupe_state.toast;
 
 public:
 	auto timer_id() const { return reinterpret_cast<intptr_t>(this); }
@@ -420,13 +421,13 @@ public:
 		if constexpr (sizeof...(args) > 0) {
 			intptr_t ptr;
 			::LoadStringW(this_dll, id, reinterpret_cast<wchar_t*>(&ptr), 0);
-			std::swprintf(loupe_state.toast.message, std::size(loupe_state.toast.message), reinterpret_cast<wchar_t*>(ptr), args...);
+			std::swprintf(toast.message, std::size(toast.message), reinterpret_cast<wchar_t*>(ptr), args...);
 		}
-		else ::LoadStringW(this_dll, id, loupe_state.toast.message, std::size(loupe_state.toast.message));
+		else ::LoadStringW(this_dll, id, toast.message, std::size(toast.message));
 
 		active = true;
 		::SetTimer(hwnd, timer_id(), time_ms, nullptr);
-		loupe_state.toast.visible = true;
+		toast.visible = true;
 	}
 	// you can also use this function to reset the toast state.
 	void on_timer()
@@ -435,7 +436,7 @@ public:
 			active = false;
 			::KillTimer(hwnd, timer_id());
 		}
-		loupe_state.toast.visible = false;
+		toast.visible = false;
 	}
 } toast_manager;
 
@@ -1071,16 +1072,23 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 ////////////////////////////////
 // その他コマンド．
 ////////////////////////////////
-
-// TODO: refactor those functions below.
-
-// all commands below assumes image.is_valid() is true.
 // returns true if the window needs redrawing.
 static inline bool centralize()
 {
+	if (!image.is_valid()) return false;
+
 	// centralize the target point.
 	loupe_state.position.x = image.width() / 2.0;
 	loupe_state.position.y = image.height() / 2.0;
+	return true;
+}
+static inline bool centralize_point(double win_ox, double win_oy)
+{
+	if (!image.is_valid()) return false;
+
+	// move the target point to the specified position.
+	loupe_state.position.x = std::clamp<double>(win_ox, 0, image.width());
+	loupe_state.position.y = std::clamp<double>(win_oy, 0, image.height());
 	return true;
 }
 static inline bool toggle_follow_cursor()
@@ -1103,6 +1111,7 @@ static inline bool toggle_grid()
 		loupe_state.grid.visible ? IDS_TOAST_GRID_ON : IDS_TOAST_GRID_OFF);
 	return true;
 }
+// this function requires image.is_valid() being true.
 static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 {
 	// ignore if the scale level is identical.
@@ -1134,25 +1143,26 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 	toast_manager.set_message(settings.toast.duration, IDS_TOAST_SCALE_FORMAT, scale);
 	return true;
 }
-static inline bool swap_scale_level(double win_ox, double win_oy)
+static inline bool swap_scale_level(double win_ox, double win_oy, Settings::WheelZoom::Pivot pivot)
 {
+	if (!image.is_valid()) return false;
+
 	auto level = loupe_state.zoom.scale_level;
 	std::swap(level, loupe_state.zoom.second_level);
 
-	if (settings.commands.swap_scale_level_pivot == Settings::WheelZoom::center)
-		win_ox = win_oy = 0;
+	if (pivot == Settings::WheelZoom::center) win_ox = win_oy = 0;
 	return apply_zoom(level, win_ox, win_oy);
 }
-template<class... TArgs>
-static bool copy_text(size_t len, const wchar_t* fmt, const TArgs&... args)
+static bool copy_text(const wchar_t* text)
 {
 	if (!::OpenClipboard(nullptr)) return false;
 	bool success = false;
 
 	::EmptyClipboard();
+	auto len = std::wcslen(text);
 	if (auto h = ::GlobalAlloc(GHND, (len + 1) * sizeof(wchar_t))) {
 		if (auto ptr = reinterpret_cast<wchar_t*>(::GlobalLock(h))) {
-			::swprintf(ptr, len + 1, fmt, args...);
+			std::memcpy(ptr, text, (len + 1) * sizeof(wchar_t));
 			::GlobalUnlock(h);
 			::SetClipboardData(CF_UNICODETEXT, h);
 
@@ -1165,15 +1175,50 @@ static bool copy_text(size_t len, const wchar_t* fmt, const TArgs&... args)
 }
 static inline bool copy_color_code(double win_ox, double win_oy)
 {
+	if (!image.is_valid()) return false;
+
 	auto [x, y] = loupe_state.win2pic(win_ox, win_oy);
 	auto color = image.color_at(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y))).to_formattable();
 	if (color > 0xffffff) return false;
 
-	if (!copy_text(6, L"%06x", color)) return false;
+	wchar_t buf[std::size("rrggbb")];
+	std::swprintf(buf, std::size(buf), L"%06x", color);
+	if (!copy_text(buf)) return false;
 
 	// toast message.
 	if (!settings.toast.notify_clipboard) return false;
-	toast_manager.set_message(settings.toast.duration, IDS_TOAST_CLIPBOARD, color);
+	toast_manager.set_message(settings.toast.duration, IDS_TOAST_CLIPBOARD, buf);
+	return true;
+}
+static inline bool copy_coordinate(double win_ox, double win_oy, bool from_center)
+{
+	if (!image.is_valid()) return false;
+
+	auto [x, y] = loupe_state.win2pic(win_ox, win_oy);
+	int img_x = static_cast<int>(std::floor(x)),
+		img_y = static_cast<int>(std::floor(y)),
+		w = image.width(), h = image.height();
+	if (!(0 <= img_x && img_x < w && 0 <= img_y && img_y < h)) return false;
+
+	wchar_t buf[std::max(std::size(L"1234,1234"), std::size(L"-1234.5,-1234.5"))];
+	if (from_center) {
+		x = img_x - w / 2.0; y = img_y - h / 2.0;
+		if (!(std::abs(x) < 10'000 && std::abs(y) < 10'000)) return false;
+
+		wchar_t fmt[] = L"%.1f,%.1f";
+		if ((w & 1) == 0) fmt[2] = L'0';
+		if ((h & 1) == 0) fmt[7] = L'0';
+		std::swprintf(buf, std::size(buf), fmt, x, y);
+	}
+	else {
+		if (!(img_x < 10'000 && img_y < 10'000)) return false;
+		std::swprintf(buf, std::size(buf), L"%d,%d", img_x, img_y);
+	}
+	if (!copy_text(buf)) return false;
+
+	// toast message.
+	if (!settings.toast.notify_clipboard) return false;
+	toast_manager.set_message(settings.toast.duration, IDS_TOAST_CLIPBOARD, buf);
 	return true;
 }
 
@@ -1182,42 +1227,92 @@ static inline bool copy_color_code(double win_ox, double win_oy)
 // メニュー操作．
 ////////////////////////////////
 struct Menu {
-	static void popup_menu(HWND hwnd, const POINT& pt_screen)
+	static bool popup_menu(HWND hwnd, bool by_mouse)
 	{
-		if (!ext_obj.is_active()) return;
-		auto chk = [cxt_menu = cxt_menu.get()](UINT id, bool check) {::CheckMenuItem(cxt_menu, id, MF_BYCOMMAND | (check ? MF_CHECKED : MF_UNCHECKED)); };
+		if (!ext_obj.is_active()) return false;
+
+		HMENU menu = cxt_menu;
+		auto ena = [&](uint32_t id, bool enabled) { ::EnableMenuItem(menu, id, MF_BYCOMMAND | (enabled ? MF_ENABLED : MF_GRAYED)); };
+		auto chk = [&](uint32_t id, bool check) { ::CheckMenuItem(menu, id, MF_BYCOMMAND | (check ? MF_CHECKED : MF_UNCHECKED)); };
 
 		// prepare the context menu.
-		chk(IDM_CXT_FOLLOW_CURSOR,					loupe_state.position.follow_cursor);
-		chk(IDM_CXT_SHOW_GRID,						loupe_state.grid.visible);
-		chk(IDM_CXT_TIP_MODE_FRAIL,					settings.tip_drag.mode				== Settings::TipDrag::frail);
-		chk(IDM_CXT_TIP_MODE_STATIONARY,			settings.tip_drag.mode				== Settings::TipDrag::stationary);
-		chk(IDM_CXT_TIP_MODE_STICKY,				settings.tip_drag.mode				== Settings::TipDrag::sticky);
-		chk(IDM_CXT_REVERSE_WHEEL,					settings.zoom.wheel.reverse_wheel);
+		ena(IDM_CXT_PT_COPY_COLOR,			by_mouse && image.is_valid());
+		ena(IDM_CXT_PT_COPY_COORD_TL,		by_mouse && image.is_valid());
+		ena(IDM_CXT_PT_COPY_COORD_C,		by_mouse && image.is_valid());
+		ena(IDM_CXT_PT_MOVE_CENTER,			by_mouse && image.is_valid());
+		chk(IDM_CXT_FOLLOW_CURSOR,			loupe_state.position.follow_cursor);
+		chk(IDM_CXT_SHOW_GRID,				loupe_state.grid.visible);
+		ena(IDM_CXT_SWAP_SCALE,				image.is_valid());
+		ena(IDM_CXT_CENTRALIZE,				image.is_valid());
+		chk(IDM_CXT_TIP_MODE_FRAIL,			settings.tip_drag.mode				== Settings::TipDrag::frail);
+		chk(IDM_CXT_TIP_MODE_STATIONARY,	settings.tip_drag.mode				== Settings::TipDrag::stationary);
+		chk(IDM_CXT_TIP_MODE_STICKY,		settings.tip_drag.mode				== Settings::TipDrag::sticky);
+		chk(IDM_CXT_REVERSE_WHEEL,			settings.zoom.wheel.reverse_wheel);
 
-		::TrackPopupMenuEx(::GetSubMenu(cxt_menu, 0), TPM_RIGHTBUTTON, pt_screen.x, pt_screen.y, hwnd, nullptr);
+		POINT pt; ::GetCursorPos(&pt);
+		auto id = ::TrackPopupMenuEx(::GetSubMenu(menu, 0),
+			TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, pt.x, pt.y, hwnd, nullptr);
+
+		return id != 0 && on_menu_command(hwnd, id, by_mouse, pt);
 	}
-	static bool on_menu_command(HWND hwnd, uint_fast16_t id)
+	// returns true if needs redraw.
+	static bool on_menu_command(HWND hwnd, uint32_t id, bool by_mouse, const POINT& pt_screen = {0, 0})
 	{
-		// returns true if needs redraw.
+		auto win_center = [&] {
+			POINT pt = pt_screen; ::ScreenToClient(hwnd, &pt);
+			RECT rc; ::GetClientRect(hwnd, &rc);
+			return std::make_pair(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+		};
+
 		switch (id) {
-		case IDM_CXT_FOLLOW_CURSOR:						return toggle_follow_cursor();
-		case IDM_CXT_SHOW_GRID:							return toggle_grid();
-		case IDM_CXT_SWAP_SCALE:						return swap_scale_level(0, 0);
-		case IDM_CXT_CENTRALIZE:						return centralize();
+		case IDM_CXT_PT_COPY_COLOR:
+			if (by_mouse) {
+				auto [x, y] = win_center();
+				return copy_color_code(x, y);
+			}
+			break;
+		case IDM_CXT_PT_COPY_COORD_TL:
+			if (by_mouse) {
+				auto [x, y] = win_center();
+				return copy_coordinate(x, y, false);
+			}
+			break;
+		case IDM_CXT_PT_COPY_COORD_C:
+			if (by_mouse) {
+				auto [x, y] = win_center();
+				return copy_coordinate(x, y, true);
+			}
+			break;
+		case IDM_CXT_PT_MOVE_CENTER:
+			if (by_mouse) {
+				auto [x, y] = win_center();
+				return centralize_point(x, y);
+			}
+			break;
+
+		case IDM_CXT_FOLLOW_CURSOR:	return toggle_follow_cursor();
+		case IDM_CXT_SHOW_GRID:		return toggle_grid();
+		case IDM_CXT_SWAP_SCALE:	return swap_scale_level(0, 0, Settings::WheelZoom::center);
+		case IDM_CXT_CENTRALIZE:	return centralize();
+
 		case IDM_CXT_REVERSE_WHEEL:
 			settings.loupe_drag.wheel.reverse_wheel		^= true;
 			settings.tip_drag.wheel.reverse_wheel		^= true;
 			settings.exedit_drag.wheel.reverse_wheel	^= true;
 			settings.zoom.wheel.reverse_wheel			^= true;
 			break;
-		case IDM_CXT_TIP_MODE_FRAIL:					settings.tip_drag.mode			= Settings::TipDrag::frail;			goto hide_tip_and_redraw;
-		case IDM_CXT_TIP_MODE_STATIONARY:				settings.tip_drag.mode			= Settings::TipDrag::stationary;	goto hide_tip_and_redraw;
-		case IDM_CXT_TIP_MODE_STICKY:					settings.tip_drag.mode			= Settings::TipDrag::sticky;		goto hide_tip_and_redraw;
+
+		case IDM_CXT_TIP_MODE_FRAIL:		settings.tip_drag.mode = Settings::TipDrag::frail;		goto hide_tip_and_redraw;
+		case IDM_CXT_TIP_MODE_STATIONARY:	settings.tip_drag.mode = Settings::TipDrag::stationary;	goto hide_tip_and_redraw;
+		case IDM_CXT_TIP_MODE_STICKY:		settings.tip_drag.mode = Settings::TipDrag::sticky;		goto hide_tip_and_redraw;
 		hide_tip_and_redraw:
 			loupe_state.tip_state.visible_level = 0;
 			return true;
-		case IDM_CXT_SETTINGS:							dialogs::open_settings(hwnd);										break;
+
+		case IDM_CXT_SETTINGS:
+			// TODO: let redraw if necessary.
+			dialogs::open_settings(hwnd);
+			break;
 		default: break;
 		}
 		return false;
@@ -1234,27 +1329,33 @@ static inline void on_update(int w, int h, void* source)
 		// notify the loupe of resizing.
 		loupe_state.on_resize(w, h);
 }
-static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, POINT&& pt)
+static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, const POINT& pt)
 {
-	if (!image.is_valid()) return false;
-
-	auto center_pt = [&](auto fn) {
-		RECT rc;
-		::GetClientRect(hwnd, &rc);
-		return fn(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+	auto win_center = [&]() {
+		RECT rc; ::GetClientRect(hwnd, &rc);
+		return std::make_pair(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
 	};
 
 	switch (cmd) {
 		using ca = Settings::ClickActions;
-	case ca::centralize:			return centralize();
-	case ca::toggle_follow_cursor:	return toggle_follow_cursor();
-	case ca::swap_scale_level:		return center_pt(swap_scale_level);
-	case ca::toggle_grid:			return toggle_grid();
-	case ca::copy_color_code:		return center_pt(copy_color_code);
+	case ca::centralize:
+		return centralize();
+	case ca::toggle_follow_cursor:
+		return toggle_follow_cursor();
+	case ca::swap_scale_level:
+	{
+		auto [x, y] = win_center();
+		return swap_scale_level(x, y, settings.commands.swap_scale_level_pivot);
+	}
+	case ca::toggle_grid:
+		return toggle_grid();
+	case ca::copy_color_code:
+	{
+		auto [x, y] = win_center();
+		return copy_color_code(x, y);
+	}
 	case ca::context_menu:
-		::ClientToScreen(hwnd, &pt);
-		Menu::popup_menu(hwnd, pt);
-		return false;
+		return Menu::popup_menu(hwnd, true);
 
 	case ca::settings:
 		dialogs::open_settings(hwnd);
@@ -1487,11 +1588,9 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 	case WM_COMMAND:
 		// menu commands.
-		if (image.is_valid()) {
-			if ((wparam >> 16) == 0 && lparam == 0) // criteria for the menu commands.
-				cxt.redraw_loupe = Menu::on_menu_command(hwnd, wparam & 0xffff) &&
-					::IsWindowVisible(hwnd) != FALSE;
-		}
+		if ((wparam >> 16) == 0 && lparam == 0) // criteria for the menu commands.
+			cxt.redraw_loupe = Menu::on_menu_command(hwnd, wparam & 0xffff, false) &&
+				::IsWindowVisible(hwnd) != FALSE;
 		break;
 
 	case WM_KEYDOWN:
@@ -1502,9 +1601,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		}
 		else if (wparam == VK_APPS) {
 			// hard-coded shortcut key that shows up the context menu.
-			POINT pt;
-			::GetCursorPos(&pt);
-			Menu::popup_menu(hwnd, pt);
+			cxt.redraw_loupe = Menu::popup_menu(hwnd, false);
 			break;
 		}
 		[[fallthrough]];
@@ -1521,6 +1618,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	if (cxt.redraw_loupe) {
 		// when redrawing is required, proccess here.
 		// returning TRUE from this function may cause flickering in the main window.
+		// TODO: draw toast message even if image.is_valid() is false.
 		if (image.is_valid() &&
 			fp->exfunc->is_editing(editp) && !fp->exfunc->is_saving(editp)) draw(hwnd);
 		else draw_blank(hwnd);

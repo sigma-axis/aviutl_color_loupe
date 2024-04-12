@@ -127,7 +127,7 @@ protected:
 			Command data;
 		} combo_data[] = {
 			{ L"(何もしない)",		Command::none					},
-			{ L"画面の中央へ移動",	Command::centralize				},
+			{ L"編集画面の中央へ移動",	Command::centralize				},
 			{ L"カーソル追従切り替え",	Command::toggle_follow_cursor	},
 			{ L"拡大率切り替え",		Command::swap_scale_level		},
 			{ L"グリッド表示切替",	Command::toggle_grid			},

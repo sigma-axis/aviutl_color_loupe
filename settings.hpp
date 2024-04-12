@@ -203,7 +203,11 @@ inline constinit struct Settings {
 			context_menu = 5,
 			toggle_grid = 6,
 			settings = 7,
+			// TODO: add the following new commands.
 			// scale_step_up, scale_step_down
+			// copy_coord_tl (copy coordinate relative to the top-left of the image)
+			// copy_coord_c (copy coordinate relative to the center of the image)
+			// centralize_2 (move the clicked point to the center of the loupe)
 		};
 		Command
 			left_click		= none,
