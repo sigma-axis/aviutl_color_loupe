@@ -89,14 +89,14 @@ namespace sigma_lib::W32::custom::mouse
 		static inline constinit POINT drag_start{}, last_point{}; // window coordinates.
 
 		// should return true if ready to initiate the drag.
-		virtual bool DragReady_core(context& cxt) = 0;
-		virtual void DragUnready_core(context& cxt) {}
+		virtual bool Ready_core(context& cxt) = 0;
+		virtual void Unready_core(context& cxt) {}
 
-		virtual void DragStart_core(context& cxt) {};
-		virtual void DragDelta_core(const POINT& curr, context& cxt) {}
-		virtual void DragEnd_core(context& cxt) {}
-		virtual void DragCancel_core(context& cxt) {}
-		virtual void DragAbort_core(context& cxt) {}
+		virtual void Start_core(context& cxt) {};
+		virtual void Delta_core(const POINT& curr, context& cxt) {}
+		virtual void End_core(context& cxt) {}
+		virtual void Cancel_core(context& cxt) {}
+		virtual void Abort_core(context& cxt) {}
 
 		// determines whether a short drag should be recognized as a single click.
 		virtual DragInvalidRange InvalidRange() { return DragInvalidRange::AlwaysValid(); }
@@ -133,17 +133,15 @@ namespace sigma_lib::W32::custom::mouse
 		}
 
 	public:
-		// TODO: rename functions below so they don't have the prefix `Drag` (and `_core` variants).
-		// TODO: add a function that forces the `validated` state.
 		// returns true if the dragging is made ready.
-		bool DragStart(HWND hwnd, const POINT& drag_start, context& cxt)
+		bool Start(HWND hwnd, const POINT& drag_start, context& cxt)
 		{
 			if (is_dragging(cxt)) return false;
 
 			DragStateBase::hwnd = hwnd;
 			DragStateBase::drag_start = last_point = drag_start;
 
-			if (DragReady_core(cxt)) {
+			if (Ready_core(cxt)) {
 				start_time = clock::now();
 				invalid_range = InvalidRange();
 				was_validated = false;
@@ -154,7 +152,7 @@ namespace sigma_lib::W32::custom::mouse
 				// instantly start drag operation if the range insisits so.
 				if (invalid_range.is_valid(0, 0)) {
 					was_validated = true;
-					current->DragStart_core(cxt);
+					current->Start_core(cxt);
 				}
 				return true;
 			}
@@ -163,29 +161,36 @@ namespace sigma_lib::W32::custom::mouse
 				return false;
 			}
 		}
+		static void Validate(context& cxt)
+		{
+			if (!is_dragging(cxt)) return;
+
+			was_validated = true;
+			current->Start_core(cxt);
+		}
 		// returns true if the dragging operation has been properly processed.
-		static bool DragDelta(const POINT& curr, context& cxt)
+		static bool Delta(const POINT& curr, context& cxt)
 		{
 			if (!is_dragging(cxt)) return false;
 
 			// ignore the input until it exceeds a certain range.
 			if (!was_validated && check_is_valid(curr)) {
 				was_validated = true;
-				current->DragStart_core(cxt);
+				current->Start_core(cxt);
 			}
 			if (was_validated) {
-				current->DragDelta_core(curr, cxt);
+				current->Delta_core(curr, cxt);
 				last_point = curr;
 			}
 			return true;
 		}
 		// returns true if the dragging operation has been properly canceled.
-		static bool DragCancel(context& cxt)
+		static bool Cancel(context& cxt)
 		{
 			if (!is_dragging(cxt)) return false;
 
-			if (was_validated) current->DragCancel_core(cxt);
-			current->DragUnready_core(cxt);
+			if (was_validated) current->Cancel_core(cxt);
+			current->Unready_core(cxt);
 
 			hwnd = nullptr;
 			current = nullptr;
@@ -194,15 +199,15 @@ namespace sigma_lib::W32::custom::mouse
 			return true;
 		}
 		// returns false if the dragging operation should be recognized as a single click.
-		static bool DragEnd(context& cxt)
+		static bool End(context& cxt)
 		{
 			if (!is_dragging(cxt)) return true; // dragging must have been canceled.
 
-			if (was_validated) current->DragEnd_core(cxt);
+			if (was_validated) current->End_core(cxt);
 			else if (check_is_valid(drag_start))
 				// the mouse stayed so long it can't be recognized as a click.
 				was_validated = true;
-			current->DragUnready_core(cxt);
+			current->Unready_core(cxt);
 
 			hwnd = nullptr;
 			current = nullptr;
@@ -211,12 +216,12 @@ namespace sigma_lib::W32::custom::mouse
 			return was_validated;
 		}
 		// returns true if there sure was a dragging state that is now aborted.
-		static bool DragAbort(context& cxt)
+		static bool Abort(context& cxt)
 		{
 			if (current == nullptr) return false;
 
-			if (was_validated) current->DragAbort_core(cxt);
-			current->DragUnready_core(cxt);
+			if (was_validated) current->Abort_core(cxt);
+			current->Unready_core(cxt);
 
 			auto tmp = hwnd;
 			hwnd = nullptr;
@@ -232,7 +237,7 @@ namespace sigma_lib::W32::custom::mouse
 				if (hwnd != nullptr &&
 					hwnd == ::GetCapture()) return true;
 
-				DragAbort(cxt);
+				Abort(cxt);
 			}
 			return false;
 		}
@@ -248,14 +253,14 @@ namespace sigma_lib::W32::custom::mouse
 	class VoidDrag : public DragBase {
 		using context = DragBase::context;
 	protected:
-		bool DragReady_core(context& cxt) override { return true; }
-		void DragUnready_core(context& cxt) override {}
+		bool Ready_core(context& cxt) override { return true; }
+		void Unready_core(context& cxt) override {}
 
-		void DragStart_core(context& cxt) override {}
-		void DragDelta_core(const POINT& curr, context& cxt) override {}
-		void DragEnd_core(context& cxt) override {}
-		void DragCancel_core(context& cxt) override {}
-		void DragAbort_core(context& cxt) override {}
+		void Start_core(context& cxt) override {}
+		void Delta_core(const POINT& curr, context& cxt) override {}
+		void End_core(context& cxt) override {}
+		void Cancel_core(context& cxt) override {}
+		void Abort_core(context& cxt) override {}
 
 		DragInvalidRange InvalidRange() override { return DragInvalidRange::AlwaysInvalid(); }
 	};

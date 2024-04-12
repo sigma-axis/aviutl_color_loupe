@@ -784,7 +784,7 @@ protected:
 		return { .x = static_cast<int>(std::floor(x)), .y = static_cast<int>(std::floor(y)) };
 	}
 
-	void DragAbort_core(context& cxt) override { DragCancel_core(cxt); }
+	void Abort_core(context& cxt) override { Cancel_core(cxt); }
 
 	virtual Settings::KeysActivate KeysActivate() { return {}; }
 	virtual Settings::WheelZoom WheelZoom() { return settings.zoom.wheel; }
@@ -804,7 +804,7 @@ static inline constinit class : public DragState {
 	constexpr static auto& pos = loupe_state.position;
 
 protected:
-	bool DragReady_core(context& cxt) override
+	bool Ready_core(context& cxt) override
 	{
 		if (!image.is_valid()) return false;
 
@@ -814,7 +814,7 @@ protected:
 		::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_HAND)));
 		return true;
 	}
-	void DragDelta_core(const POINT& curr, context& cxt) override
+	void Delta_core(const POINT& curr, context& cxt) override
 	{
 		double dx = curr.x - last_point.x, dy = curr.y - last_point.y;
 		if (dx == 0 && dy == 0) return;
@@ -835,7 +835,7 @@ protected:
 		pos.x = px; pos.y = py;
 		cxt.redraw_loupe = true;
 	}
-	void DragCancel_core(context& cxt) override
+	void Cancel_core(context& cxt) override
 	{
 		pos.x = revert_x; pos.y = revert_y;
 		loupe_state.zoom.scale_level = revert_zoom;
@@ -852,14 +852,14 @@ static inline constinit class : public DragState {
 	POINT init{};
 
 protected:
-	bool DragReady_core(context& cxt) override
+	bool Ready_core(context& cxt) override
 	{
 		if (!image.is_valid()) return false;
 
 		::SetCursor(nullptr);
 		return true;
 	}
-	void DragStart_core(context& cxt) override
+	void Start_core(context& cxt) override
 	{
 		switch (settings.tip_drag.mode) {
 			using enum Settings::TipDrag::Mode;
@@ -884,7 +884,7 @@ protected:
 		init = win2pic_i(drag_start);
 		tip.x = init.x; tip.y = init.y;
 	}
-	void DragDelta_core(const POINT& curr, context& cxt) override
+	void Delta_core(const POINT& curr, context& cxt) override
 	{
 		if (!tip.is_visible()) return;
 
@@ -897,7 +897,7 @@ protected:
 		tip.x = x; tip.y = y;
 		cxt.redraw_loupe = true;
 	}
-	void DragEnd_core(context& cxt) override
+	void End_core(context& cxt) override
 	{
 		if (!tip.is_visible()) return;
 
@@ -910,7 +910,7 @@ protected:
 		}
 		return;
 	}
-	void DragCancel_core(context& cxt) override
+	void Cancel_core(context& cxt) override
 	{
 		tip.visible_level = 0;
 		cxt.redraw_loupe = true;
@@ -978,7 +978,7 @@ public:
 	static bool is_valid() { return exedit_fp != nullptr; }
 
 protected:
-	bool DragReady_core(context& cxt) override
+	bool Ready_core(context& cxt) override
 	{
 		if (!is_valid() || !image.is_valid()) return false;
 
@@ -991,7 +991,7 @@ protected:
 		}
 		return false;
 	}
-	void DragStart_core(context& cxt) override
+	void Start_core(context& cxt) override
 	{
 		const auto& op = settings.exedit_drag;
 		auto shift = key_disguise(VK_SHIFT, op.shift, [&]{ return (cxt.wparam & MK_SHIFT) != 0; }),
@@ -999,7 +999,7 @@ protected:
 		disguise_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseDown, last, MK_LBUTTON);
 	}
-	void DragDelta_core(const POINT& curr, context& cxt) override
+	void Delta_core(const POINT& curr, context& cxt) override
 	{
 		auto pt = win2pic_i(curr);
 		if (pt.x == last.x && pt.y == last.y) return;
@@ -1011,7 +1011,7 @@ protected:
 		disguise_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseMove, last, MK_LBUTTON);
 	}
-	void DragEnd_core(context& cxt) override
+	void End_core(context& cxt) override
 	{
 		const auto& op = settings.exedit_drag;
 		auto shift = key_disguise(VK_SHIFT, op.shift, [&]{ return (cxt.wparam & MK_SHIFT) != 0; }),
@@ -1019,7 +1019,7 @@ protected:
 		disguise_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseUp, last, 0);
 	}
-	void DragCancel_core(context& cxt) override
+	void Cancel_core(context& cxt) override
 	{
 		cxt.wparam = 0;
 		ForceKeyState shift{ VK_SHIFT, false }, alt{ VK_MENU, false };
@@ -1059,13 +1059,13 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 		// check the button/key-combination condition.
 		if (drag->KeysActivate().match(btn, ctrl, shift, alt)) {
 			// then type-specific condition.
-			if (drag->DragStart(hwnd, drag_start, cxt)) return;
+			if (drag->Start(hwnd, drag_start, cxt)) return;
 			break;
 		}
 	}
 
 	// initiate the "placeholder drag".
-	void_drag.DragStart(hwnd, drag_start, cxt);
+	void_drag.Start(hwnd, drag_start, cxt);
 }
 
 
@@ -1224,14 +1224,14 @@ static inline bool copy_coordinate(double win_ox, double win_oy, bool from_cente
 static inline bool open_settings(HWND hwnd)
 {
 	if (dialogs::open_settings(hwnd)) {
+		// hide the toast as its duration/visibility might have changed.
+		toast_manager.on_timer();
+
 		// hide the tip as settings for the tip might have changed.
 		loupe_state.tip_state.visible_level = 0;
 
 		// re-apply the scale level, as its valid range might have changed.
 		if (image.is_valid()) apply_zoom(loupe_state.zoom.scale_level, 0, 0);
-
-		// hide the toast as its duration/visibility might have changed.
-		toast_manager.on_timer();
 
 		// no need to discard font handles for new font settings,
 		// as there's no option at this point yet.
@@ -1443,11 +1443,11 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			}
 			cxt.redraw_loupe = true;
 		}
-		else ext_obj.deactivate(), DragState::DragAbort(cxt);
+		else ext_obj.deactivate(), DragState::Abort(cxt);
 		break;
 	case FilterMessage::FileClose:
 		ext_obj.free();
-		DragState::DragAbort(cxt);
+		DragState::Abort(cxt);
 
 		// clear the window when a file is closed.
 		if (::IsWindowVisible(hwnd) != FALSE)
@@ -1472,7 +1472,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_MBUTTONDOWN:
 	case WM_XBUTTONDOWN:
 		// cancel an existing drag operation.
-		if (!DragState::DragCancel(cxt))
+		if (!DragState::Cancel(cxt))
 			// if nothing is canceled, try to initiate a new.
 			DragState::InitiateDrag(hwnd, cursor_pos(lparam), cxt);
 		break;
@@ -1482,7 +1482,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_MBUTTONUP:
 	case WM_XBUTTONUP:
 		// finish dragging.
-		if (!DragState::DragEnd(cxt)) {
+		if (!DragState::End(cxt)) {
 			// now recognized as a single click.
 
 			// find the assinged command.
@@ -1506,11 +1506,11 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		break;
 	case WM_CAPTURECHANGED:
 		// abort dragging.
-		DragState::DragAbort(cxt);
+		DragState::Abort(cxt);
 		break;
 
 	case WM_MOUSEMOVE:
-		if (DragState::DragDelta(cursor_pos(lparam), cxt)) /* empty */;
+		if (DragState::Delta(cursor_pos(lparam), cxt)) /* empty */;
 		else if (!image.is_valid()) break;
 		else if (settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip_state.visible_level > 0) {
 			// update to the tip of "sticky" mode.
@@ -1552,7 +1552,8 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			auto zoom = DragState::CurrentWheelZoom();
 			if (!zoom.enabled) break;
 
-			// TODO: force the drag state "valid".
+			// if dragging, it's no longer recognized as a click.
+			DragState::Validate(cxt);
 
 			// reverse wheel if necessary.
 			int delta = ((static_cast<int16_t>(wparam >> 16) < 0) == zoom.reverse_wheel)
@@ -1613,7 +1614,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_SYSKEYDOWN:
 		if (wparam == VK_ESCAPE) {
 			// if a drag operation is being held, cancel it with ESC key.
-			if (DragState::DragCancel(cxt)) break;
+			if (DragState::Cancel(cxt)) break;
 		}
 		else if (wparam == VK_APPS) {
 			// hard-coded shortcut key that shows up the context menu.
