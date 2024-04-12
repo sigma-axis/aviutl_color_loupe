@@ -163,7 +163,7 @@ namespace sigma_lib::W32::custom::mouse
 		}
 		static void Validate(context& cxt)
 		{
-			if (!is_dragging(cxt)) return;
+			if (was_validated || !is_dragging(cxt)) return;
 
 			was_validated = true;
 			current->Start_core(cxt);

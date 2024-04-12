@@ -242,10 +242,9 @@ namespace dialogs::basics
 			}
 			case WM_MOUSEWHEEL:
 			{
-				constexpr int def_wheel_delta = 120;
 				auto wheel_delta = static_cast<int16_t>(wparam >> 16);
 
-				set_scroll_pos(get_scroll_pos() - scroll_wheel * wheel_delta / def_wheel_delta);
+				set_scroll_pos(get_scroll_pos() - scroll_wheel * wheel_delta / WHEEL_DELTA);
 				return true;
 			}
 			}

@@ -155,17 +155,17 @@ protected:
 
 	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
-		auto combo = reinterpret_cast<HWND>(lparam);
+		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
 		case WM_COMMAND:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
 			case CBN_SELCHANGE:
 				switch (id) {
 				case IDC_COMBO1:
-					on_change_single(get_combo_data<Command>(combo));
+					on_change_single(get_combo_data<Command>(ctrl));
 					return true;
 				case IDC_COMBO2:
-					on_change_double(get_combo_data<Command>(combo));
+					on_change_double(get_combo_data<Command>(ctrl));
 					return true;
 				}
 				break;
@@ -251,23 +251,23 @@ protected:
 
 	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
-		auto combo = reinterpret_cast<HWND>(lparam);
+		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
 		case WM_COMMAND:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
 			case CBN_SELCHANGE:
 				switch (id) {
 				case IDC_COMBO1:
-					on_change_button(get_combo_data<Button>(combo));
+					on_change_button(get_combo_data<Button>(ctrl));
 					return true;
 				case IDC_COMBO2:
-					on_change_ctrl(get_combo_data<KeyCond>(combo));
+					on_change_ctrl(get_combo_data<KeyCond>(ctrl));
 					return true;
 				case IDC_COMBO3:
-					on_change_shift(get_combo_data<KeyCond>(combo));
+					on_change_shift(get_combo_data<KeyCond>(ctrl));
 					return true;
 				case IDC_COMBO4:
-					on_change_alt(get_combo_data<KeyCond>(combo));
+					on_change_alt(get_combo_data<KeyCond>(ctrl));
 					return true;
 				}
 				break;
@@ -337,7 +337,6 @@ protected:
 
 	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
-		auto spin = reinterpret_cast<HWND>(lparam);
 		switch (message) {
 		case WM_COMMAND:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
@@ -371,7 +370,10 @@ public:
 
 private:
 	void on_change_enabled(bool data_new) { wheel.enabled = data_new; }
-	void on_change_reverse(bool data_new) { wheel.reverse_wheel = data_new; }
+	void on_change_reverse(bool data_new) { wheel.reversed = data_new; }
+	void on_change_steps(uint8_t data_new) {
+		wheel.num_steps = std::clamp(data_new, WheelZoom::num_steps_min, WheelZoom::num_steps_max);
+	}
 	void on_change_pivot(WheelZoom::Pivot data_new) { wheel.pivot = data_new; }
 
 protected:
@@ -386,14 +388,20 @@ protected:
 			{ L"ウィンドウ中央",	WheelZoom::center	},
 			{ L"カーソル位置",	WheelZoom::cursor	},
 		};
+		constexpr auto desc_data = // TODO: move this string to resource.
+			L"ホイール入力1回で拡大率を何段階変化させるかを指定します．"
+			L"4段階増える(減る)ごとに拡大率は2倍(半分)になります．";
 
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		::SendMessageW(::GetDlgItem(hwnd, IDC_CHECK1), BM_SETCHECK,
 			wheel.enabled ? BST_CHECKED : BST_UNCHECKED, {});
 		::SendMessageW(::GetDlgItem(hwnd, IDC_CHECK2), BM_SETCHECK,
-			wheel.reverse_wheel ? BST_CHECKED : BST_UNCHECKED, {});
+			wheel.reversed ? BST_CHECKED : BST_UNCHECKED, {});
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), wheel.pivot, combo_data);
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), wheel.num_steps, WheelZoom::num_steps_min, WheelZoom::num_steps_max);
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(desc_data));
 
 		return false;
 	}
@@ -421,6 +429,13 @@ protected:
 				switch (id) {
 				case IDC_COMBO1:
 					on_change_pivot(get_combo_data<WheelZoom::Pivot>(ctrl));
+					return true;
+				}
+				break;
+			case EN_CHANGE:
+				switch (id) {
+				case IDC_EDIT1:
+					on_change_steps(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN1)));
 					return true;
 				}
 			}

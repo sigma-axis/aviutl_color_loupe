@@ -61,16 +61,17 @@ inline constinit struct Settings {
 	struct WheelZoom {
 		enum Pivot : uint8_t { center = 0, cursor = 1, };
 
-		bool enabled, reverse_wheel;
+		bool enabled, reversed;
+		uint8_t num_steps;
 		Pivot pivot;
 
-		// TODO: add a field "zoom speed".
+		constexpr static uint8_t num_steps_min = 1, num_steps_max = 16;
 	};
 
 	struct LoupeDrag {
 		KeysActivate keys{ MouseButton::left, KeysActivate::dontcare, KeysActivate::dontcare, KeysActivate::off };
 		DragInvalidRange range{ .distance = 2, .timespan = 800 };
-		WheelZoom wheel{ true, false, WheelZoom::cursor };
+		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
 		bool lattice = false;
 		RailMode rail_mode = RailMode::cross;
@@ -79,7 +80,7 @@ inline constinit struct Settings {
 	struct TipDrag {
 		KeysActivate keys{ MouseButton::left, KeysActivate::off, KeysActivate::dontcare, KeysActivate::dontcare };
 		DragInvalidRange range = DragInvalidRange::AlwaysValid();
-		WheelZoom wheel{ true, false, WheelZoom::cursor };
+		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
 		enum Mode : uint8_t {
 			frail = 0, stationary = 1, sticky = 2,
@@ -103,7 +104,7 @@ inline constinit struct Settings {
 	struct ExEditDrag {
 		KeysActivate keys{ MouseButton::left, KeysActivate::on, KeysActivate::dontcare, KeysActivate::dontcare };
 		DragInvalidRange range{ .distance = 2, .timespan = 800 };
-		WheelZoom wheel{ true, false, WheelZoom::cursor };
+		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
 		enum KeyDisguise : uint8_t {
 			flat	= 0,
@@ -117,7 +118,8 @@ inline constinit struct Settings {
 	struct ZoomBehavior {
 		WheelZoom wheel{
 			.enabled = true,
-			.reverse_wheel = false,
+			.reversed = false,
+			.num_steps = 1,
 			.pivot = WheelZoom::center,
 		};
 		int8_t min_scale_level = min_scale_level_min,
@@ -196,13 +198,13 @@ inline constinit struct Settings {
 	struct ClickActions {
 		enum Command : uint8_t {
 			none = 0,
-			centralize = 1,
-			toggle_follow_cursor = 2,
-			swap_scale_level = 3,
-			copy_color_code = 4,
-			context_menu = 5,
-			toggle_grid = 6,
-			settings = 7,
+			swap_scale_level = 1,
+			copy_color_code = 2,
+			toggle_follow_cursor = 3,
+			centralize = 4,
+			toggle_grid = 5,
+			settings = 201,
+			context_menu = 202,
 			// TODO: add the following new commands.
 			// scale_step_up, scale_step_down
 			// copy_coord_tl (copy coordinate relative to the top-left of the image)
@@ -250,7 +252,7 @@ inline constinit struct Settings {
 		load_int(section, range.distance); \
 		load_int(section, range.timespan);\
 		load_bool(section, wheel.enabled);\
-		load_bool(section, wheel.reverse_wheel);\
+		load_bool(section, wheel.reversed);\
 		load_enum(section, wheel.pivot)
 
 		load_drag(loupe_drag);
@@ -270,7 +272,7 @@ inline constinit struct Settings {
 		load_enum(exedit_drag, alt);
 
 		load_bool(zoom, wheel.enabled);
-		load_bool(zoom, wheel.reverse_wheel);
+		load_bool(zoom, wheel.reversed);
 		load_enum(zoom, wheel.pivot);
 		load_int(zoom, min_scale_level);
 		load_int(zoom, max_scale_level);
@@ -346,7 +348,7 @@ inline constinit struct Settings {
 		save_dec(section, range.distance); \
 		save_dec(section, range.timespan);\
 		save_bool(section, wheel.enabled);\
-		save_bool(section, wheel.reverse_wheel);\
+		save_bool(section, wheel.reversed);\
 		save_dec(section, wheel.pivot)
 
 		save_drag(loupe_drag);
@@ -366,7 +368,7 @@ inline constinit struct Settings {
 		save_dec(exedit_drag, alt);
 
 		save_bool(zoom, wheel.enabled);
-		save_bool(zoom, wheel.reverse_wheel);
+		save_bool(zoom, wheel.reversed);
 		save_dec(zoom, wheel.pivot);
 		save_dec(zoom, min_scale_level);
 		save_dec(zoom, max_scale_level);

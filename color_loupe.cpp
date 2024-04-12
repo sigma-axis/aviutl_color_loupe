@@ -1106,7 +1106,7 @@ static inline bool toggle_grid()
 	loupe_state.grid.visible ^= true;
 
 	// toast message.
-	if (!settings.toast.notify_grid) return false;
+	if (!settings.toast.notify_grid) return true;
 	toast_manager.set_message(settings.toast.duration,
 		loupe_state.grid.visible ? IDS_TOAST_GRID_ON : IDS_TOAST_GRID_OFF);
 	return true;
@@ -1121,8 +1121,23 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 	// apply.
 	loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
 
+	// update the tip position if necessary.
+	if (loupe_state.tip_state.is_visible() &&
+		(settings.tip_drag.mode == Settings::TipDrag::sticky ||
+			DragState::current_drag<DragState>() == &tip_drag)) {
+		// TODO: find more "proper" way to get hwnd.
+		if (auto hwnd = toast_manager.destination(); hwnd != nullptr) {
+			POINT pt; ::GetCursorPos(&pt); ::ScreenToClient(hwnd, &pt);
+			RECT rc; ::GetClientRect(hwnd, &rc);
+
+			auto [x, y] = loupe_state.win2pic(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+			loupe_state.tip_state.x = static_cast<int>(std::floor(x));
+			loupe_state.tip_state.y = static_cast<int>(std::floor(y));
+		}
+	}
+
 	// toast message.
-	if (!settings.toast.notify_scale) return false;
+	if (!settings.toast.notify_scale) return true;
 	wchar_t scale[std::max(std::size(L"x 123/456"), std::max(std::size(L"x 123.45"), std::size(L"123.45%")))];
 	switch (settings.toast.scale_format) {
 		using enum Settings::Toast::ScaleFormat;
@@ -1262,10 +1277,10 @@ struct Menu {
 		chk(IDM_CXT_SHOW_GRID,				loupe_state.grid.visible);
 		ena(IDM_CXT_SWAP_SCALE,				image.is_valid());
 		ena(IDM_CXT_CENTRALIZE,				image.is_valid());
-		chk(IDM_CXT_TIP_MODE_FRAIL,			settings.tip_drag.mode				== Settings::TipDrag::frail);
-		chk(IDM_CXT_TIP_MODE_STATIONARY,	settings.tip_drag.mode				== Settings::TipDrag::stationary);
-		chk(IDM_CXT_TIP_MODE_STICKY,		settings.tip_drag.mode				== Settings::TipDrag::sticky);
-		chk(IDM_CXT_REVERSE_WHEEL,			settings.zoom.wheel.reverse_wheel);
+		chk(IDM_CXT_TIP_MODE_FRAIL,			settings.tip_drag.mode == Settings::TipDrag::frail);
+		chk(IDM_CXT_TIP_MODE_STATIONARY,	settings.tip_drag.mode == Settings::TipDrag::stationary);
+		chk(IDM_CXT_TIP_MODE_STICKY,		settings.tip_drag.mode == Settings::TipDrag::sticky);
+		chk(IDM_CXT_REVERSE_WHEEL,			settings.zoom.wheel.reversed);
 
 		POINT pt; ::GetCursorPos(&pt);
 		auto id = ::TrackPopupMenuEx(::GetSubMenu(menu, 0),
@@ -1314,10 +1329,10 @@ struct Menu {
 		case IDM_CXT_CENTRALIZE:	return centralize();
 
 		case IDM_CXT_REVERSE_WHEEL:
-			settings.loupe_drag.wheel.reverse_wheel		^= true;
-			settings.tip_drag.wheel.reverse_wheel		^= true;
-			settings.exedit_drag.wheel.reverse_wheel	^= true;
-			settings.zoom.wheel.reverse_wheel			^= true;
+			settings.loupe_drag.wheel.reversed	^= true;
+			settings.tip_drag.wheel.reversed	^= true;
+			settings.exedit_drag.wheel.reversed	^= true;
+			settings.zoom.wheel.reversed		^= true;
 			break;
 
 		case IDM_CXT_TIP_MODE_FRAIL:		settings.tip_drag.mode = Settings::TipDrag::frail;		goto hide_tip_and_redraw;
@@ -1555,9 +1570,11 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			// if dragging, it's no longer recognized as a click.
 			DragState::Validate(cxt);
 
-			// reverse wheel if necessary.
-			int delta = ((static_cast<int16_t>(wparam >> 16) < 0) == zoom.reverse_wheel)
-				? +1 : -1;
+			// find the number of steps.
+			int delta = zoom.num_steps;
+
+			// reverse the wheel if necessary.
+			if ((static_cast<int16_t>(wparam >> 16) < 0) ^ zoom.reversed) delta = -delta;
 
 			// take the pivot into account.
 			double ox = 0, oy = 0;
