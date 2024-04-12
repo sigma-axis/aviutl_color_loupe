@@ -1031,6 +1031,7 @@ class setting_dlg : public dialog_base {
 		//color,
 	};
 	std::map<tab_kind, std::unique_ptr<vscroll_form>> pages{};
+	static inline constinit tab_kind last_selected_tab = tab_kind::wheel_zoom;
 
 	SIZE prev_size{};
 
@@ -1164,8 +1165,7 @@ protected:
 		auto list = ::GetDlgItem(hwnd, IDC_LIST1);
 		{
 			auto sc = suppress_callback();
-			// TODO: remembering the previously selected item might be good.
-			init_list_items(list, headers[0].data, headers);
+			init_list_items(list, last_selected_tab, headers);
 		}
 
 		// update to create the first page.
@@ -1221,6 +1221,7 @@ protected:
 
 	void on_apply() const
 	{
+		last_selected_tab = get_list_data<tab_kind>(::GetDlgItem(hwnd, IDC_LIST1));
 		settings = curr;
 	}
 

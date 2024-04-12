@@ -40,7 +40,7 @@ namespace dialogs::basics
 			}
 			else {
 				auto that = reinterpret_cast<dialog_base*>(::GetWindowLongW(hwnd, GWL_USERDATA));
-				if (that == nullptr || that->no_callback || that->hwnd == nullptr) return FALSE;
+				if (that == nullptr || that->no_callback || that->hwnd != hwnd) return FALSE;
 
 				ret = that->handler(message, wparam, lparam);
 				if (message == WM_NCDESTROY) that->hwnd = nullptr;
@@ -117,20 +117,23 @@ namespace dialogs::basics
 		HWND hwnd = nullptr;
 		void create(HWND parent)
 		{
-			::CreateDialogParamW(this_dll, MAKEINTRESOURCEW(template_id()), parent, proc, reinterpret_cast<LPARAM>(this));
+			if (hwnd == nullptr)
+				::CreateDialogParamW(this_dll, MAKEINTRESOURCEW(template_id()),
+					parent, proc, reinterpret_cast<LPARAM>(this));
 		}
 		intptr_t modal(HWND parent)
 		{
-			// TODO: find the top-level window containing `parent`,
+			if (hwnd != nullptr) return 0;
+
+			// find the top-level window containing `parent`,
 			// for the cases like SplitWindow or Nest is applied.
-			return ::DialogBoxParamW(this_dll, MAKEINTRESOURCEW(template_id()), parent, proc, reinterpret_cast<LPARAM>(this));
+			parent = ::GetAncestor(parent, GA_ROOT);
+			return ::DialogBoxParamW(this_dll, MAKEINTRESOURCEW(template_id()),
+				parent, proc, reinterpret_cast<LPARAM>(this));
 		}
 
 		virtual ~dialog_base() {
-			if (hwnd != nullptr) {
-				::DestroyWindow(hwnd);
-				hwnd = nullptr;
-			}
+			if (hwnd != nullptr) ::DestroyWindow(hwnd);
 		}
 	};
 
