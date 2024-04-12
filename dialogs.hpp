@@ -25,5 +25,5 @@ extern HMODULE this_dll;
 
 namespace dialogs
 {
-	void open_settings(HWND parent);
+	bool open_settings(HWND parent);
 }

@@ -1221,6 +1221,24 @@ static inline bool copy_coordinate(double win_ox, double win_oy, bool from_cente
 	toast_manager.set_message(settings.toast.duration, IDS_TOAST_CLIPBOARD, buf);
 	return true;
 }
+static inline bool open_settings(HWND hwnd)
+{
+	if (dialogs::open_settings(hwnd)) {
+		// hide the tip as settings for the tip might have changed.
+		loupe_state.tip_state.visible_level = 0;
+
+		// re-apply the scale level, as its valid range might have changed.
+		if (image.is_valid()) apply_zoom(loupe_state.zoom.scale_level, 0, 0);
+
+		// hide the toast as its duration/visibility might have changed.
+		toast_manager.on_timer();
+
+		// no need to discard font handles for new font settings,
+		// as there's no option at this point yet.
+		return true;
+	}
+	return false;
+}
 
 
 ////////////////////////////////
@@ -1310,9 +1328,8 @@ struct Menu {
 			return true;
 
 		case IDM_CXT_SETTINGS:
-			// TODO: let redraw if necessary.
-			dialogs::open_settings(hwnd);
-			break;
+			return open_settings(hwnd);
+
 		default: break;
 		}
 		return false;
@@ -1358,8 +1375,7 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 		return Menu::popup_menu(hwnd, true);
 
 	case ca::settings:
-		dialogs::open_settings(hwnd);
-		return false;
+		return open_settings(hwnd);
 
 	case ca::none:
 	default: return false;

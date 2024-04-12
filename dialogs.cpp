@@ -27,8 +27,6 @@ extern HMODULE this_dll;
 
 using namespace dialogs::basics;
 
-// TODO: clamp all numeric values below when assigning.
-
 ////////////////////////////////
 // Commonly used patterns.
 ////////////////////////////////
@@ -293,10 +291,10 @@ public:
 
 private:
 	void on_change_distance(int16_t data_new) {
-		range.distance = std::clamp(data_new, range.distance_min, range.distance_max);
+		range.distance = std::clamp(data_new, DragInvalidRange::distance_min, DragInvalidRange::distance_max);
 	}
 	void on_change_timespan(int16_t data_new) {
-		range.timespan = std::clamp(data_new, range.timespan_min, range.timespan_max);
+		range.timespan = std::clamp(data_new, DragInvalidRange::timespan_min, DragInvalidRange::timespan_max);
 	}
 
 protected:
@@ -671,8 +669,12 @@ public:
 	zoom_options(Zoom& zoom) : zoom{ zoom } {}
 
 private:
-	void on_change_min(int8_t data_new) { zoom.min_scale_level = data_new; }
-	void on_change_max(int8_t data_new) { zoom.max_scale_level = data_new; }
+	void on_change_min(int8_t data_new) {
+		zoom.min_scale_level = std::clamp(data_new, Zoom::min_scale_level_min, Zoom::min_scale_level_max);
+	}
+	void on_change_max(int8_t data_new) {
+		zoom.max_scale_level = std::clamp(data_new, Zoom::max_scale_level_min, Zoom::max_scale_level_max);
+	}
 	void set_text(int id, int level) {
 		auto [n, d] = Settings::HelperFunctions::ZoomScaleFromLevel(level);
 		wchar_t buf[std::size(L"0123.45")];
@@ -756,12 +758,13 @@ protected:
 // 通知メッセージ設定．
 ////////////////////////////////
 class toast_functions : public dialog_base {
-	using Placement = Settings::Toast::Placement;
-	using ScaleFormat = Settings::Toast::ScaleFormat;
+	using Toast = Settings::Toast;
+	using Placement = Toast::Placement;
+	using ScaleFormat = Toast::ScaleFormat;
 
 public:
-	Settings::Toast& toast;
-	toast_functions(Settings::Toast& toast) : toast{ toast } {}
+	Toast& toast;
+	toast_functions(Toast& toast) : toast{ toast } {}
 
 private:
 	void on_change_notify_scale(bool data_new) { toast.notify_scale = data_new; }
@@ -769,7 +772,9 @@ private:
 	void on_change_notify_grid(bool data_new) { toast.notify_grid = data_new; }
 	void on_change_notify_clipboard(bool data_new) { toast.notify_clipboard = data_new; }
 	void on_change_placement(Placement data_new) { toast.placement = data_new; }
-	void on_change_duration(int data_new) { toast.duration = data_new; }
+	void on_change_duration(int data_new) {
+		toast.duration = std::clamp(data_new, Toast::duration_min, Toast::duration_max);
+	}
 	void on_change_scale_format(ScaleFormat data_new) { toast.scale_format = data_new; }
 
 protected:
@@ -884,8 +889,12 @@ public:
 	grid_options(Grid& grid) : grid{ grid } {}
 
 private:
-	void on_change_thin(int8_t data_new) { grid.least_scale_thin = data_new; }
-	void on_change_thick(int8_t data_new) { grid.least_scale_thick = data_new; }
+	void on_change_thin(int8_t data_new) {
+		grid.least_scale_thin = std::clamp(data_new, Grid::least_scale_thin_min, Grid::least_scale_thin_max);
+	}
+	void on_change_thick(int8_t data_new) {
+		grid.least_scale_thick = std::clamp(data_new, Grid::least_scale_thick_min, Grid::least_scale_thick_max);
+	}
 	void set_text(int id, int level) {
 		wchar_t buf[std::size(L"0123.45")]{ L"----" };
 		if (level <= scale_level_max) {
@@ -1219,10 +1228,11 @@ protected:
 		::InvalidateRect(hwnd, nullptr, FALSE);
 	}
 
-	void on_apply() const
+	void on_apply() const { settings = curr; }
+	void on_close(bool accept)
 	{
 		last_selected_tab = get_list_data<tab_kind>(::GetDlgItem(hwnd, IDC_LIST1));
-		settings = curr;
+		::EndDialog(hwnd, accept ? TRUE : FALSE);
 	}
 
 	void on_select(tab_kind kind)
@@ -1252,10 +1262,10 @@ protected:
 				switch (id) {
 				case IDOK:
 					on_apply();
-					::EndDialog(hwnd, TRUE);
+					on_close(true);
 					return true;
 				case IDCANCEL:
-					::EndDialog(hwnd, FALSE);
+					on_close(false);
 					return true;
 				}
 				break;
@@ -1289,10 +1299,8 @@ public:
 
 namespace dialogs
 {
-	void open_settings(HWND parent)
+	bool open_settings(HWND parent)
 	{
-		auto ret = setting_dlg{ settings }.modal(parent);
-		// TODO: update/redraw the window if OK was pressed.
-		// TODO: hide the tip if necessary (like when it's disabled).
+		return setting_dlg{ settings }.modal(parent) != FALSE;
 	}
 }
