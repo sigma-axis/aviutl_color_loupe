@@ -31,6 +31,12 @@ inline constinit struct Settings {
 	using RailMode = sigma_lib::W32::custom::mouse::RailMode;
 	using DragInvalidRange = sigma_lib::W32::custom::mouse::DragInvalidRange;
 
+	enum class ColorFormat : uint8_t {
+		hexdec6 = 0, dec3x3 = 1,
+	};
+	enum class CoordFormat : uint8_t {
+		origin_top_left = 0, origin_center = 1,
+	};
 	struct KeysActivate {
 		enum State : int8_t {
 			off	= 0,
@@ -87,6 +93,9 @@ inline constinit struct Settings {
 		};
 		Mode mode = frail;
 		RailMode rail_mode = RailMode::cross;
+
+		ColorFormat color_fmt = ColorFormat::hexdec6;
+		CoordFormat coord_fmt = CoordFormat::origin_top_left;
 
 		wchar_t font_name[LF_FACESIZE]{ L"Consolas" };
 		int8_t font_size		= 16;
@@ -263,6 +272,8 @@ inline constinit struct Settings {
 		load_drag(tip_drag);
 		load_enum(tip_drag, mode);
 		load_enum(tip_drag, rail_mode);
+		load_enum(tip_drag, color_fmt);
+		load_enum(tip_drag, coord_fmt);
 		load_int(tip_drag, font_size);
 		load_int(tip_drag, box_inflate);
 		load_int(tip_drag, chrome_thick);
@@ -361,6 +372,8 @@ inline constinit struct Settings {
 		save_drag(tip_drag);
 		save_dec(tip_drag, mode);
 		save_dec(tip_drag, rail_mode);
+		save_dec(tip_drag, color_fmt);
+		save_dec(tip_drag, coord_fmt);
 		//save_dec(tip_drag, font_size);
 		//save_dec(tip_drag, box_inflate);
 		//save_dec(tip_drag, chrome_thick);

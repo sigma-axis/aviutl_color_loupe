@@ -559,7 +559,8 @@ static inline void draw_round_rect(HDC hdc, const RECT& rc, int radius, int thic
 	::DeleteObject(hrgn);
 }
 // 色・座標表示ボックス描画．
-static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box, int pic_x, int pic_y, Color col, bool& prefer_above)
+static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
+	int pic_x, int pic_y, int pic_w, int pic_h, Color col, bool& prefer_above)
 {
 	RECT box_big = box;
 	box_big.left -= settings.tip_drag.box_inflate; box_big.right += settings.tip_drag.box_inflate;
@@ -576,9 +577,39 @@ static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box, int pic_x,
 		gap_v = 10, // ピクセルを囲む四角形とツールチップとの間の空白．
 		margin = 4; // ウィンドウ端との最低保証空白．
 
-	wchar_t tip_str[std::size(L"#RRGGBB\nX:1234, Y:1234--")];
-	int tip_strlen = std::swprintf(tip_str, std::size(tip_str),
-		L"#%06X\nX:%4d, Y:%4d", col.to_formattable(), pic_x, pic_y);
+	// prepare the string to place in.
+	wchar_t tip_str[std::bit_ceil(
+		std::max(std::size(L"#RRGGBB"), std::size(L"RGB(000,000,000)")) + 1 +
+		std::max(std::size(L"X:1234, Y:1234"), std::size(L"X:-1234.5, Y:-1234.5")))];
+	int tip_strlen = 0;
+	switch (settings.tip_drag.color_fmt) {
+		using enum Settings::ColorFormat;
+	case dec3x3:
+		tip_strlen += swprintf_s(tip_str, L"RGB(%3u,%3u,%3u)\n", col.R, col.G, col.B);
+		break;
+	case hexdec6:
+	default:
+		tip_strlen += swprintf_s(tip_str, L"#%06X\n", col.to_formattable());
+		break;
+	}
+	switch (settings.tip_drag.coord_fmt) {
+		using enum Settings::CoordFormat;
+	case origin_center:
+	{
+		wchar_t fmt[] = L"X:%7.1f, Y:%7.1f";
+		double x = pic_x - pic_w / 2.0, y = pic_y - pic_h / 2.0;
+		if ((pic_w & 1) == 0) fmt[3] = L'5', fmt[5] = L'0'; // no half-integer.
+		if (pic_w < 2000) fmt[3]--; // trim by 1 digit, it's rarely necessary.
+		if ((pic_h & 1) == 0) fmt[12] = L'5', fmt[14] = L'0';
+		if (pic_h < 2000) fmt[12]--;
+		tip_strlen += swprintf_s(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, fmt, x, y);
+		break;
+	}
+	case origin_top_left:
+	default:
+		tip_strlen += swprintf_s(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, L"X:%4d, Y:%4d", pic_x, pic_y);
+		break;
+	}
 
 	// measure the text size.
 	auto tmp_fon = ::SelectObject(hdc, tip_font);
@@ -763,7 +794,8 @@ static inline void draw(HWND hwnd)
 			draw_tip(hdc, wd, ht, {
 				static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)),
 				static_cast<int>(std::ceil(x + s)), static_cast<int>(std::ceil(y + s))
-				}, tip.x, tip.y, image.color_at(tip.x, tip.y), tip.prefer_above);
+				}, tip.x, tip.y,
+				image.width(), image.height(), image.color_at(tip.x, tip.y), tip.prefer_above);
 		}
 
 		// draw the toast.
@@ -1287,8 +1319,8 @@ struct Menu {
 
 		// prepare the context menu.
 		ena(IDM_CXT_PT_COPY_COLOR,			by_mouse && image.is_valid());
-		ena(IDM_CXT_PT_COPY_COORD_TL,		by_mouse && image.is_valid());
-		ena(IDM_CXT_PT_COPY_COORD_C,		by_mouse && image.is_valid());
+		ena(IDM_CXT_PT_COPY_COORD_TL,		by_mouse && image.is_valid()); // TODO: switch these two by settings. leave only one.
+		ena(IDM_CXT_PT_COPY_COORD_C,		by_mouse && image.is_valid()); // TODO: switch these two by settings. leave only one.
 		ena(IDM_CXT_PT_MOVE_CENTER,			by_mouse && image.is_valid());
 		chk(IDM_CXT_FOLLOW_CURSOR,			loupe_state.position.follow_cursor);
 		chk(IDM_CXT_SHOW_GRID,				loupe_state.grid.visible);
@@ -1712,7 +1744,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha9"
+#define PLUGIN_VERSION	"v2.00-alpha10"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

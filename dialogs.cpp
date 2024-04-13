@@ -574,7 +574,7 @@ public:
 
 
 ////////////////////////////////
-// 色座標表示ドラッグ固有(一部).
+// 色・座標表示ドラッグ(動作).
 ////////////////////////////////
 class tip_drag : public dialog_base {
 	using TipMode = Settings::TipDrag::Mode;
@@ -633,6 +633,67 @@ protected:
 					return true;
 				case IDC_COMBO2:
 					on_change_rail(get_combo_data<RailMode>(ctrl));
+					return true;
+				}
+				break;
+			}
+			break;
+		}
+		return false;
+	}
+};
+
+
+////////////////////////////////
+// 色・座標表示ドラッグ(書式).
+////////////////////////////////
+class tip_drag_format : public dialog_base {
+	using ColorFormat = Settings::ColorFormat;
+	using CoordFormat = Settings::CoordFormat;
+
+public:
+	Settings::TipDrag& drag;
+	tip_drag_format(Settings::TipDrag& drag) : drag{ drag } {}
+
+private:
+	void on_change_color(ColorFormat data_new) { drag.color_fmt = data_new; }
+	void on_change_coord(CoordFormat data_new) { drag.coord_fmt = data_new; }
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_DRAG_TIP_FMT; }
+
+	bool on_init(HWND) override
+	{
+		constexpr CtrlData<ColorFormat> combo_data1[] = {
+			{ IDS_TIP_COLOR_FMT_HEX,	ColorFormat::hexdec6	},
+			{ IDS_TIP_COLOR_FMT_RGB,	ColorFormat::dec3x3		},
+		};
+		constexpr CtrlData<CoordFormat> combo_data2[] = {
+			{ IDS_TIP_COORD_FMT_TL,	CoordFormat::origin_top_left	},
+			{ IDS_TIP_COORD_FMT_C,	CoordFormat::origin_center		},
+		};
+
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.color_fmt, combo_data1);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.coord_fmt, combo_data2);
+
+		return false;
+	}
+
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case CBN_SELCHANGE:
+				switch (id) {
+				case IDC_COMBO1:
+					on_change_color(get_combo_data<ColorFormat>(ctrl));
+					return true;
+				case IDC_COMBO2:
+					on_change_coord(get_combo_data<CoordFormat>(ctrl));
 					return true;
 				}
 				break;
@@ -1179,7 +1240,7 @@ class setting_dlg : public dialog_base {
 				new drag_range{ curr.tip_drag.range },
 				new wheel_zoom{ curr.tip_drag.wheel },
 				new tip_drag{ curr.tip_drag },
-				// TODO: formattings?
+				new tip_drag_format{ curr.tip_drag },
 				// TODO: fonts?
 			};
 		case tab_kind::drag_exedit:
