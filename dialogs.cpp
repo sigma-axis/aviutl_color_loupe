@@ -30,9 +30,22 @@ using namespace dialogs::basics;
 ////////////////////////////////
 // Commonly used patterns.
 ////////////////////////////////
-static void init_combo_items(HWND combo, auto curr, const auto& items) {
+template<class TData>
+struct CtrlData {
+	uint32_t desc;
+	TData data;
+};
+
+static inline const wchar_t* get_resource_string(uint32_t id) {
+	const wchar_t* ret;
+	::LoadStringW(this_dll, id, reinterpret_cast<wchar_t*>(&ret), 0);
+	return ret;
+}
+
+template<class TData, size_t N>
+static inline void init_combo_items(HWND combo, TData curr, const CtrlData<TData>(&items)[N]) {
 	constexpr auto add_item = [](HWND combo, const auto& item) {
-		WPARAM idx = ::SendMessageW(combo, CB_ADDSTRING, {}, reinterpret_cast<LPARAM>(item.desc));
+		WPARAM idx = ::SendMessageW(combo, CB_ADDSTRING, {}, reinterpret_cast<LPARAM>(get_resource_string(item.desc)));
 		::SendMessageW(combo, CB_SETITEMDATA, idx, static_cast<LPARAM>(item.data));
 		return idx;
 	};
@@ -45,15 +58,15 @@ static void init_combo_items(HWND combo, auto curr, const auto& items) {
 }
 
 template<class data>
-static data get_combo_data(HWND combo) {
+static inline data get_combo_data(HWND combo) {
 	return static_cast<data>(
 		::SendMessageW(combo, CB_GETITEMDATA,
 			::SendMessageW(combo, CB_GETCURSEL, {}, {}), {}));
 }
 
-static void init_list_items(HWND list, auto curr, const auto& items) {
+static inline void init_list_items(HWND list, auto curr, const auto& items) {
 	constexpr auto add_item = [](HWND list, const auto& item) {
-		WPARAM idx = ::SendMessageW(list, LB_ADDSTRING, {}, reinterpret_cast<LPARAM>(item.desc));
+		WPARAM idx = ::SendMessageW(list, LB_ADDSTRING, {}, reinterpret_cast<LPARAM>(get_resource_string(item.desc)));
 		::SendMessageW(list, LB_SETITEMDATA, idx, static_cast<LPARAM>(item.data));
 		return idx;
 	};
@@ -66,36 +79,36 @@ static void init_list_items(HWND list, auto curr, const auto& items) {
 }
 
 template<class data>
-static data get_list_data(HWND list) {
+static inline data get_list_data(HWND list) {
 	return static_cast<data>(
 		::SendMessageW(list, LB_GETITEMDATA,
 			::SendMessageW(list, LB_GETCURSEL, {}, {}), {}));
 }
 
-static void init_spin(HWND spin, int curr, int min, int max) {
+static inline void init_spin(HWND spin, int curr, int min, int max) {
 	::SendMessageW(spin, UDM_SETRANGE32, static_cast<WPARAM>(min), static_cast<LPARAM>(max));
 	::SendMessageW(spin, UDM_SETPOS32, {}, static_cast<LPARAM>(curr));
 }
 
-static int get_spin_value(HWND spin) {
+static inline int get_spin_value(HWND spin) {
 	return static_cast<int>(::SendMessageW(spin, UDM_GETPOS32, {}, {}));
 }
 
-static void set_slider_value(HWND slider, int curr) {
+static inline void set_slider_value(HWND slider, int curr) {
 	::SendMessageW(slider, TBM_SETPOS, TRUE, static_cast<LPARAM>(curr));
 }
-static void init_slider(HWND slider, int curr, int min, int max) {
+static inline void init_slider(HWND slider, int curr, int min, int max) {
 	::SendMessageW(slider, TBM_SETRANGEMIN, FALSE, static_cast<LPARAM>(min));
 	::SendMessageW(slider, TBM_SETRANGEMAX, FALSE, static_cast<LPARAM>(max));
 	set_slider_value(slider, curr);
 }
-static void init_slider(HWND slider, int curr, int min, int max, size_t delta, size_t page) {
+static inline void init_slider(HWND slider, int curr, int min, int max, size_t delta, size_t page) {
 	::SendMessageW(slider, TBM_SETLINESIZE, FALSE, static_cast<LPARAM>(delta));
 	::SendMessageW(slider, TBM_SETPAGESIZE, FALSE, static_cast<LPARAM>(page));
 	init_slider(slider, curr, min, max);
 }
 
-static int get_slider_value(HWND slider) {
+static inline int get_slider_value(HWND slider) {
 	return static_cast<int>(::SendMessageW(slider, TBM_GETPOS, 0, 0));
 }
 
@@ -121,20 +134,17 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			Command data;
-		} combo_data[] = {
-			{ L"(何もしない)",		Command::none					},
-			{ L"ズーム切り替え",		Command::swap_zoom_level		},
-			{ L"カラーコードをコピー",	Command::copy_color_code		},
-			{ L"カーソル追従切り替え",	Command::toggle_follow_cursor	},
-			{ L"編集画面の中央へ移動",	Command::centralize				},
-			{ L"グリッド表示切り替え",	Command::toggle_grid			},
-			{ L"ズームアップ",		Command::zoom_step_up			},
-			{ L"ズームダウン",		Command::zoom_step_down			},
-			{ L"メニューを表示",		Command::context_menu			},
-			{ L"このウィンドウを表示",	Command::settings				},
+		constexpr CtrlData<Command> combo_data[] = {
+			{ IDS_CMD_NONE, 			Command::none					},
+			{ IDS_CMD_SWAP_ZOOM, 		Command::swap_zoom_level		},
+			{ IDS_CMD_COPY_COLOR, 		Command::copy_color_code		},
+			{ IDS_CMD_FOLLOW_CURSOR, 	Command::toggle_follow_cursor	},
+			{ IDS_CMD_CENTRALIZE, 		Command::centralize				},
+			{ IDS_CMD_TOGGLE_GRID, 		Command::toggle_grid			},
+			{ IDS_CMD_ZOOM_STEP_UP, 	Command::zoom_step_up			},
+			{ IDS_CMD_ZOOM_STEP_DOWN, 	Command::zoom_step_down			},
+			{ IDS_CMD_CXT_MENU, 		Command::context_menu			},
+			{ IDS_CMD_OPTIONS_DLG, 		Command::settings				},
 		};
 
 		// suppress notifications from controls.
@@ -203,29 +213,19 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			Button data;
-		} combo_data1[] = {
-			{ L"(なし)",		Button::none	},
-			{ L"左ボタン",	Button::left	},
-			{ L"右ボタン",	Button::right	},
-			{ L"中央ボタン",	Button::middle	},
-			{ L"X1 ボタン",	Button::x1		},
-			{ L"X2 ボタン",	Button::x2		},
+		constexpr CtrlData<Button> combo_data1[] = {
+			{ IDS_MOUSEBUTTON_NONE,		Button::none	},
+			{ IDS_MOUSEBUTTON_LEFT,		Button::left	},
+			{ IDS_MOUSEBUTTON_RIGHT,	Button::right	},
+			{ IDS_MOUSEBUTTON_MIDDLE,	Button::middle	},
+			{ IDS_MOUSEBUTTON_X1,		Button::x1		},
+			{ IDS_MOUSEBUTTON_X2,		Button::x2		},
 		};
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			KeyCond data;
-		} combo_data2[] = {
-			{ L"指定なし",	KeyCond::dontcare	},
-			{ L"ON",		KeyCond::on			},
-			{ L"OFF",		KeyCond::off		},
+		constexpr CtrlData<KeyCond> combo_data2[] = {
+			{ IDS_MODKEY_COND_NONE,	KeyCond::dontcare	},
+			{ IDS_MODKEY_COND_ON,	KeyCond::on			},
+			{ IDS_MODKEY_COND_OFF,	KeyCond::off		},
 		};
-		constexpr auto desc_data = // TODO: move this string to resource.
-			L"Ctrl, Shift, Alt の修飾キーの条件が全て成立している場合，"
-			L"指定したマウスのボタンでドラッグを開始できます．\r\n"
-			L"ドラッグの最中なら修飾キーを押したり離したりしてもドラッグは継続します．";
 
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
@@ -247,7 +247,7 @@ protected:
 		}
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(desc_data));
+			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_DRAG_KEYCOND)));
 
 		return false;
 	}
@@ -311,11 +311,6 @@ protected:
 			{ IDC_SPIN1, DragInvalidRange::distance_min, DragInvalidRange::distance_max },
 			{ IDC_SPIN2, DragInvalidRange::timespan_min, DragInvalidRange::timespan_max },
 		};
-		constexpr auto desc_data = // TODO: move this string to resource.
-			L"ボタンを押してから離すまでが指定の距離・時間以内の場合，"
-			L"ドラッグではなくクリックの判定となり，クリックに割り当てられたコマンドを実行します．\r\n"
-			L"クリック判定せずボタンを押した瞬間から即ドラッグしたい場合，"
-			L"ピクセル距離に -1 を指定してください．";
 
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
@@ -333,7 +328,7 @@ protected:
 		}
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(desc_data));
+			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_DRAG_RANGE)));
 
 		return false;
 	}
@@ -384,16 +379,10 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			WheelZoom::Pivot data;
-		} combo_data[] = {
-			{ L"ウィンドウ中央",	WheelZoom::center	},
-			{ L"カーソル位置",	WheelZoom::cursor	},
+		constexpr CtrlData<WheelZoom::Pivot> combo_data[] = {
+			{ IDS_ZOOM_PIVOT_CENTER,	WheelZoom::center	},
+			{ IDS_ZOOM_PIVOT_CURSOR,	WheelZoom::cursor	},
 		};
-		constexpr auto desc_data = // TODO: move this string to resource.
-			L"ホイール入力1回で拡大率を何段階変化させるかを指定します．"
-			L"4段階増える(減る)ごとに拡大率は2倍(半分)になります．";
 
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
@@ -404,7 +393,7 @@ protected:
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), wheel.pivot, combo_data);
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), wheel.num_steps, WheelZoom::num_steps_min, WheelZoom::num_steps_max);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(desc_data));
+			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_ZOOM_STEPS)));
 
 		return false;
 	}
@@ -469,13 +458,10 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			RailMode data;
-		} combo_data[] = {
-			{ L"しない",	RailMode::none		},
-			{ L"十字",	RailMode::cross		},
-			{ L"8方向",	RailMode::octagonal	},
+		constexpr CtrlData<RailMode> combo_data[] = {
+			{ IDS_RAILMODE_NONE,		RailMode::none		},
+			{ IDS_RAILMODE_CROSS, 		RailMode::cross		},
+			{ IDS_RAILMODE_OCTAGONAL,	RailMode::octagonal	},
 		};
 
 		// suppress notifications from controls.
@@ -533,27 +519,15 @@ private:
 	void on_change_mode(TipMode data_new) { drag.mode = data_new; }
 	void on_change_rail(RailMode data_new) { drag.rail_mode = data_new; }
 	void select_desc(TipMode mode) {
-		const wchar_t* s;
-		// TODO: move the strings below to resource.
+		uint32_t id;
 		switch (mode) {
-		case TipMode::frail:
-			s = L"ボタンを押している間だけ情報ウィンドウが表示されます．"
-				L"ボタンを離すと消えます．";
-			break;
-		case TipMode::stationary:
-			s = L"ボタンを離しても情報表示が残ります．"
-				L"もう一度ボタンを押すと消えます．"
-				L"ボタンを離している間は表示位置が動きません．";
-			break;
-		case TipMode::sticky:
-			s = L"ボタンを離しても情報表示が残ります．"
-				L"もう一度ボタンを押すと消えます．"
-				L"ボタンを離していても情報表示がマウスカーソルを追従します．";
-			break;
+		case TipMode::frail:		id = IDS_DESC_TIP_FRAIL;		break;
+		case TipMode::stationary:	id = IDS_DESC_TIP_STATIONARY;	break;
+		case TipMode::sticky:		id = IDS_DESC_TIP_STICKY;		break;
 		default: return;
 		}
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(s));
+			{}, reinterpret_cast<LPARAM>(get_resource_string(id)));
 	}
 
 protected:
@@ -561,22 +535,16 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			TipMode data;
-		} combo_data1[] = {
-			{ L"ホールド",		TipMode::frail		},
-			{ L"トグル / 固定",	TipMode::stationary	},
-			{ L"トグル / 追従",	TipMode::sticky		},
+		constexpr CtrlData<TipMode> combo_data1[] = {
+			{ IDS_TIPMODE_FRAIL, 		TipMode::frail		},
+			{ IDS_TIPMODE_STATIONARY, 	TipMode::stationary	},
+			{ IDS_TIPMODE_STICKY, 		TipMode::sticky		},
 		};
 
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			RailMode data;
-		} combo_data2[] = {
-			{ L"しない",	RailMode::none		},
-			{ L"十字",	RailMode::cross		},
-			{ L"8方向",	RailMode::octagonal	},
+		constexpr CtrlData<RailMode> combo_data2[] = {
+			{ IDS_RAILMODE_NONE, 		RailMode::none		},
+			{ IDS_RAILMODE_CROSS, 		RailMode::cross		},
+			{ IDS_RAILMODE_OCTAGONAL, 	RailMode::octagonal	},
 		};
 
 		// suppress notifications from controls.
@@ -617,42 +585,35 @@ protected:
 // 拡張編集ドラッグ固有．
 ////////////////////////////////
 class exedit_drag : public dialog_base {
-	using KeyDisguise = Settings::ExEditDrag::KeyDisguise;
+	using KeyFake = Settings::ExEditDrag::KeyFake;
 
 public:
 	Settings::ExEditDrag& drag;
 	exedit_drag(Settings::ExEditDrag& drag) : drag{ drag } {}
 
 private:
-	void on_change_shift(KeyDisguise data_new) { drag.shift = data_new; }
-	void on_change_alt(KeyDisguise data_new) { drag.alt = data_new; }
+	void on_change_shift(KeyFake data_new) { drag.fake_shift = data_new; }
+	void on_change_alt(KeyFake data_new) { drag.fake_alt = data_new; }
 
 protected:
 	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_DRAG_EXEDIT; }
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			KeyDisguise data;
-		} combo_data[] = {
-			{ L"そのまま",	KeyDisguise::flat	},
-			{ L"ON 固定",	KeyDisguise::on		},
-			{ L"OFF 固定",	KeyDisguise::off	},
-			{ L"反転",		KeyDisguise::invert	},
+		constexpr CtrlData<KeyFake> combo_data[] = {
+			{ IDS_MODKEY_FAKE_FLAT,	KeyFake::flat	},
+			{ IDS_MODKEY_FAKE_ON,	KeyFake::on		},
+			{ IDS_MODKEY_FAKE_OFF,	KeyFake::off	},
+			{ IDS_MODKEY_FAKE_INV,	KeyFake::invert	},
 		};
-		constexpr auto desc_data = // TODO: move this string to resource.
-			L"拡張編集では Shift で方向を上下左右に固定したり Alt で拡大率の操作ができますが，"
-			L"実際のキー入力に対するドラッグ操作でのキー認識を変更・上書きできます．\r\n"
-			L"※ Ctrl キーの設定は変更できません．";
 
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.shift, combo_data);
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.alt, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.fake_shift, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.fake_alt, combo_data);
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(desc_data));
+			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_EXEDIT_FAKE)));
 
 		return false;
 	}
@@ -666,10 +627,10 @@ protected:
 			case CBN_SELCHANGE:
 				switch (id) {
 				case IDC_COMBO1:
-					on_change_shift(get_combo_data<KeyDisguise>(ctrl));
+					on_change_shift(get_combo_data<KeyFake>(ctrl));
 					return true;
 				case IDC_COMBO2:
-					on_change_alt(get_combo_data<KeyDisguise>(ctrl));
+					on_change_alt(get_combo_data<KeyFake>(ctrl));
 					return true;
 				}
 				break;
@@ -818,14 +779,10 @@ protected:
 			{ IDC_RADIO8,	Placement::bottom		},
 			{ IDC_RADIO9,	Placement::bottom_right	},
 		};
-
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			ScaleFormat data;
-		} combo_data[] = {
-			{ L"分数",	ScaleFormat::fraction	},
-			{ L"小数",	ScaleFormat::decimal	},
-			{ L"%表示",	ScaleFormat::percent	},
+		constexpr CtrlData<ScaleFormat> combo_data[] = {
+			{ IDS_SCALE_FORMAT_FRAC,	ScaleFormat::fraction	},
+			{ IDS_SCALE_FORMAT_DEC,		ScaleFormat::decimal	},
+			{ IDS_SCALE_FORMAT_PCT,		ScaleFormat::percent	},
 		};
 
 		// suppress notifications from controls.
@@ -934,11 +891,6 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr auto desc_data = // TODO: move this string to resource.
-			L"グリッドには2種類あり，細いグリッドは1ピクセル幅，太いグリッドは2ピクセル幅の線で描画されます．\r\n"
-			L"表示には拡大率が一定以上必要で，その最小拡大率を細いグリッド，太いグリッドでそれぞれ指定します．\r\n"
-			L"いずれも 3 倍以上の拡大率が必要で，太いグリッドの描画が優先されます．";
-
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		auto slider = ::GetDlgItem(hwnd, IDC_SLIDER1);
@@ -951,7 +903,8 @@ protected:
 			Grid::least_zoom_thick_min, Grid::least_zoom_thick_max, 1, 4);
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(zoom_level_max));
 		set_text(IDC_EDIT2, grid.least_zoom_thick);
-		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT, {}, reinterpret_cast<LPARAM>(desc_data));
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_GRID_KINDS)));
 		return false;
 	}
 
@@ -1003,12 +956,9 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			Pivot data;
-		} combo_data[] = {
-			{ L"ウィンドウ中央",	Pivot::center	},
-			{ L"カーソル位置",	Pivot::cursor	},
+		constexpr CtrlData<Pivot> combo_data[] = {
+			{ IDS_ZOOM_PIVOT_CENTER,	Pivot::center	},
+			{ IDS_ZOOM_PIVOT_CURSOR,	Pivot::cursor	},
 		};
 
 		// suppress notifications from controls.
@@ -1059,23 +1009,17 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			const wchar_t* desc; // TODO: move these strings to resource.
-			Pivot data;
-		} combo_data[] = {
-			{ L"ウィンドウ中央",	Pivot::center	},
-			{ L"カーソル位置",	Pivot::cursor	},
+		constexpr CtrlData<Pivot> combo_data[] = {
+			{ IDS_ZOOM_PIVOT_CENTER,	Pivot::center	},
+			{ IDS_ZOOM_PIVOT_CURSOR,	Pivot::cursor	},
 		};
-		constexpr auto desc_data = // TODO: move this string to resource. (note that this is shared by another dialog form.)
-			L"ホイール入力1回で拡大率を何段階変化させるかを指定します．"
-			L"4段階増える(減る)ごとに拡大率は2倍(半分)になります．";
 
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, combo_data);
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), steps, ClickActions::zoom_step_num_steps_min, ClickActions::zoom_step_num_steps_max);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(desc_data));
+			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_ZOOM_STEPS)));
 
 		return false;
 	}
@@ -1239,21 +1183,21 @@ protected:
 	bool on_init(HWND) override
 	{
 		constexpr struct {
-			const wchar_t* desc;
+			uint32_t desc;
 			tab_kind data;
 		} headers[] = {
-			{ L"ズーム操作",				tab_kind::wheel_zoom		},
-			{ L"ルーペ移動ドラッグ",		tab_kind::drag_move_loupe	},
-			{ L"色・座標表示",			tab_kind::drag_show_tip		},
-			{ L"拡張編集ドラッグ",		tab_kind::drag_exedit		},
-			{ L"左クリック",				tab_kind::action_left		},
-			{ L"右クリック",				tab_kind::action_right		},
-			{ L"ホイールクリック",		tab_kind::action_middle		},
-			{ L"X1 クリック",			tab_kind::action_x1_button	},
-			{ L"X2 クリック",			tab_kind::action_x2_button	},
-			{ L"クリックコマンドの設定",	tab_kind::commands			},
-			{ L"通知メッセージ",			tab_kind::toast				},
-			{ L"グリッド",				tab_kind::grid				},
+			{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
+			{ IDS_DLG_TAB_DRAG_LOUPE,	tab_kind::drag_move_loupe	},
+			{ IDS_DLG_TAB_DRAG_TIP,		tab_kind::drag_show_tip		},
+			{ IDS_DLG_TAB_DRAG_EXEDIT,	tab_kind::drag_exedit		},
+			{ IDS_DLG_TAB_CLK_LEFT,		tab_kind::action_left		},
+			{ IDS_DLG_TAB_CLK_RIGHT,	tab_kind::action_right		},
+			{ IDS_DLG_TAB_CLK_MIDDLE,	tab_kind::action_middle		},
+			{ IDS_DLG_TAB_CLK_X1,		tab_kind::action_x1_button	},
+			{ IDS_DLG_TAB_CLK_X2,		tab_kind::action_x2_button	},
+			{ IDS_DLG_TAB_CMD_OPTIONS,	tab_kind::commands			},
+			{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
+			{ IDS_DLG_TAB_GRID,			tab_kind::grid				},
 		};
 
 		{

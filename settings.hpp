@@ -106,13 +106,13 @@ inline constinit struct Settings {
 		DragInvalidRange range{ .distance = 2, .timespan = 800 };
 		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
-		enum KeyDisguise : uint8_t {
+		enum KeyFake : uint8_t {
 			flat	= 0,
 			off		= 1,
 			on		= 2,
 			invert	= 3,
 		};
-		KeyDisguise shift = flat, alt = off; // no ctrl key; it's kind of special.
+		KeyFake fake_shift = flat, fake_alt = off; // no ctrl key; it's kind of special.
 	} exedit_drag;
 
 	struct ZoomBehavior {
@@ -269,8 +269,8 @@ inline constinit struct Settings {
 		load_int(tip_drag, chrome_radius);
 
 		load_drag(exedit_drag);
-		load_enum(exedit_drag, shift);
-		load_enum(exedit_drag, alt);
+		load_enum(exedit_drag, fake_shift);
+		load_enum(exedit_drag, fake_alt);
 
 		load_bool(zoom, wheel.enabled);
 		load_bool(zoom, wheel.reversed);
@@ -367,8 +367,8 @@ inline constinit struct Settings {
 		//save_dec(tip_drag, chrome_radius);
 
 		save_drag(exedit_drag);
-		save_dec(exedit_drag, shift);
-		save_dec(exedit_drag, alt);
+		save_dec(exedit_drag, fake_shift);
+		save_dec(exedit_drag, fake_alt);
 
 		save_bool(zoom, wheel.enabled);
 		save_bool(zoom, wheel.reversed);
