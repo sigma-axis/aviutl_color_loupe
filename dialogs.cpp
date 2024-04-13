@@ -64,7 +64,8 @@ static inline data get_combo_data(HWND combo) {
 			::SendMessageW(combo, CB_GETCURSEL, {}, {}), {}));
 }
 
-static inline void init_list_items(HWND list, auto curr, const auto& items) {
+template<class TData, size_t N>
+static inline void init_list_items(HWND list, TData curr, const CtrlData<TData>(&items)[N]) {
 	constexpr auto add_item = [](HWND list, const auto& item) {
 		WPARAM idx = ::SendMessageW(list, LB_ADDSTRING, {}, reinterpret_cast<LPARAM>(get_resource_string(item.desc)));
 		::SendMessageW(list, LB_SETITEMDATA, idx, static_cast<LPARAM>(item.data));
@@ -134,19 +135,6 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr CtrlData<Command> combo_data[] = {
-			{ IDS_CMD_NONE, 			Command::none					},
-			{ IDS_CMD_SWAP_ZOOM, 		Command::swap_zoom_level		},
-			{ IDS_CMD_COPY_COLOR, 		Command::copy_color_code		},
-			{ IDS_CMD_FOLLOW_CURSOR, 	Command::toggle_follow_cursor	},
-			{ IDS_CMD_CENTRALIZE, 		Command::centralize				},
-			{ IDS_CMD_TOGGLE_GRID, 		Command::toggle_grid			},
-			{ IDS_CMD_ZOOM_STEP_UP, 	Command::zoom_step_up			},
-			{ IDS_CMD_ZOOM_STEP_DOWN, 	Command::zoom_step_down			},
-			{ IDS_CMD_CXT_MENU, 		Command::context_menu			},
-			{ IDS_CMD_OPTIONS_DLG, 		Command::settings				},
-		};
-
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		for (int id : { IDC_COMBO1, IDC_COMBO2 }) {
@@ -179,6 +167,84 @@ protected:
 					return true;
 				case IDC_COMBO2:
 					on_change_double(get_combo_data<Command>(ctrl));
+					return true;
+				}
+				break;
+			}
+			break;
+		}
+		return false;
+	}
+
+public:
+	constexpr static CtrlData<Command> combo_data[] = {
+			{ IDS_CMD_NONE, 			Command::none					},
+			{ IDS_CMD_SWAP_ZOOM, 		Command::swap_zoom_level		},
+			{ IDS_CMD_COPY_COLOR, 		Command::copy_color_code		},
+			{ IDS_CMD_FOLLOW_CURSOR, 	Command::toggle_follow_cursor	},
+			{ IDS_CMD_CENTRALIZE, 		Command::centralize				},
+			{ IDS_CMD_TOGGLE_GRID, 		Command::toggle_grid			},
+			{ IDS_CMD_ZOOM_STEP_UP, 	Command::zoom_step_up			},
+			{ IDS_CMD_ZOOM_STEP_DOWN, 	Command::zoom_step_down			},
+			{ IDS_CMD_CXT_MENU, 		Command::context_menu			},
+			{ IDS_CMD_OPTIONS_DLG, 		Command::settings				},
+	};
+};
+
+
+////////////////////////////////
+// クリックコマンドの説明．
+////////////////////////////////
+class click_action_desc : public dialog_base {
+	using Command = Settings::ClickActions::Command;
+
+public:
+	click_action_desc() {}
+
+private:
+	void on_change_command(Command data_new) {
+		uint32_t id;
+		switch (data_new) {
+		case Command::none:					id = IDS_DESC_CMD_NONE;			break;
+		case Command::swap_zoom_level:		id = IDS_DESC_CMD_SWAP_ZOOM;	break;
+		case Command::copy_color_code:		id = IDS_DESC_CMD_COPY_COLOR;	break;
+		case Command::toggle_follow_cursor:	id = IDS_DESC_CMD_FOLLOW;		break;
+		case Command::centralize:			id = IDS_DESC_CMD_CENTRALIZE;	break;
+		case Command::toggle_grid:			id = IDS_DESC_CMD_GRID;			break;
+		case Command::zoom_step_up:			id = IDS_DESC_CMD_ZOOM_UP;		break;
+		case Command::zoom_step_down:		id = IDS_DESC_CMD_ZOOM_DOWN;	break;
+		case Command::context_menu:			id = IDS_DESC_CMD_CXT_MENU;		break;
+		case Command::settings:				id = IDS_DESC_CMD_SETTINGS;		break;
+		default: return;
+		}
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(get_resource_string(id)));
+	}
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_CMD_DESC; }
+
+	bool on_init(HWND) override
+	{
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+		constexpr auto curr = Command::swap_zoom_level;
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), curr, click_action::combo_data);
+		on_change_command(curr);
+
+		return false;
+	}
+
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case CBN_SELCHANGE:
+				switch (id) {
+				case IDC_COMBO1:
+					on_change_command(get_combo_data<Command>(ctrl));
 					return true;
 				}
 				break;
@@ -379,18 +445,13 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr CtrlData<WheelZoom::Pivot> combo_data[] = {
-			{ IDS_ZOOM_PIVOT_CENTER,	WheelZoom::center	},
-			{ IDS_ZOOM_PIVOT_CURSOR,	WheelZoom::cursor	},
-		};
-
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		::SendMessageW(::GetDlgItem(hwnd, IDC_CHECK1), BM_SETCHECK,
 			wheel.enabled ? BST_CHECKED : BST_UNCHECKED, {});
 		::SendMessageW(::GetDlgItem(hwnd, IDC_CHECK2), BM_SETCHECK,
 			wheel.reversed ? BST_CHECKED : BST_UNCHECKED, {});
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), wheel.pivot, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), wheel.pivot, pivot_combo_data);
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), wheel.num_steps, WheelZoom::num_steps_min, WheelZoom::num_steps_max);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
 			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_ZOOM_STEPS)));
@@ -436,6 +497,13 @@ protected:
 		}
 		return false;
 	}
+
+public:
+	constexpr static CtrlData<WheelZoom::Pivot> pivot_combo_data[] = {
+		{ IDS_ZOOM_PIVOT_CENTER,	WheelZoom::center	},
+		{ IDS_ZOOM_PIVOT_CURSOR,	WheelZoom::cursor	},
+	};
+
 };
 
 
@@ -458,17 +526,11 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr CtrlData<RailMode> combo_data[] = {
-			{ IDS_RAILMODE_NONE,		RailMode::none		},
-			{ IDS_RAILMODE_CROSS, 		RailMode::cross		},
-			{ IDS_RAILMODE_OCTAGONAL,	RailMode::octagonal	},
-		};
-
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		::SendMessageW(::GetDlgItem(hwnd, IDC_CHECK1), BM_SETCHECK,
 			drag.lattice ? BST_CHECKED : BST_UNCHECKED, {});
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.rail_mode, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.rail_mode, rail_combo_data);
 
 		return false;
 	}
@@ -501,6 +563,13 @@ protected:
 		}
 		return false;
 	}
+
+public:
+	constexpr static CtrlData<RailMode> rail_combo_data[] = {
+		{ IDS_RAILMODE_NONE,		RailMode::none		},
+		{ IDS_RAILMODE_CROSS, 		RailMode::cross		},
+		{ IDS_RAILMODE_OCTAGONAL,	RailMode::octagonal	},
+	};
 };
 
 
@@ -541,17 +610,11 @@ protected:
 			{ IDS_TIPMODE_STICKY, 		TipMode::sticky		},
 		};
 
-		constexpr CtrlData<RailMode> combo_data2[] = {
-			{ IDS_RAILMODE_NONE, 		RailMode::none		},
-			{ IDS_RAILMODE_CROSS, 		RailMode::cross		},
-			{ IDS_RAILMODE_OCTAGONAL, 	RailMode::octagonal	},
-		};
-
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.mode, combo_data1);
 		select_desc(drag.mode);
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.rail_mode, combo_data2);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.rail_mode, loupe_drag::rail_combo_data);
 
 		return false;
 	}
@@ -956,14 +1019,9 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr CtrlData<Pivot> combo_data[] = {
-			{ IDS_ZOOM_PIVOT_CENTER,	Pivot::center	},
-			{ IDS_ZOOM_PIVOT_CURSOR,	Pivot::cursor	},
-		};
-
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, wheel_zoom::pivot_combo_data);
 
 		return false;
 	}
@@ -1001,7 +1059,7 @@ public:
 private:
 	void on_change_step_pivot(Pivot data_new) { pivot = data_new; }
 	void on_change_num_steps(uint8_t data_new) {
-		steps = std::clamp(data_new, ClickActions::zoom_step_num_steps_min, ClickActions::zoom_step_num_steps_max);
+		steps = std::clamp(data_new, ClickActions::step_zoom_num_steps_min, ClickActions::step_zoom_num_steps_max);
 	}
 
 protected:
@@ -1009,15 +1067,10 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr CtrlData<Pivot> combo_data[] = {
-			{ IDS_ZOOM_PIVOT_CENTER,	Pivot::center	},
-			{ IDS_ZOOM_PIVOT_CURSOR,	Pivot::cursor	},
-		};
-
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, combo_data);
-		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), steps, ClickActions::zoom_step_num_steps_min, ClickActions::zoom_step_num_steps_max);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, wheel_zoom::pivot_combo_data);
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), steps, ClickActions::step_zoom_num_steps_min, ClickActions::step_zoom_num_steps_max);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
 			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_ZOOM_STEPS)));
 
@@ -1109,6 +1162,7 @@ class setting_dlg : public dialog_base {
 		click_pages:
 			return new vscroll_form{
 				new click_action{ *btn },
+				new click_action_desc{},
 			};
 			}
 
@@ -1154,7 +1208,8 @@ class setting_dlg : public dialog_base {
 		case tab_kind::commands:
 			return new vscroll_form{
 				new command_swap_zoom{ curr.commands.swap_zoom_level_pivot },
-				new command_step_zoom{ curr.commands.zoom_step_pivot, curr.commands.zoom_step_num_steps },
+				new command_step_zoom{ curr.commands.step_zoom_pivot, curr.commands.step_zoom_num_steps },
+				new click_action_desc{},
 			};
 		}
 		return nullptr;
@@ -1182,10 +1237,7 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr struct {
-			uint32_t desc;
-			tab_kind data;
-		} headers[] = {
+		constexpr CtrlData<tab_kind> headers[] = {
 			{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
 			{ IDS_DLG_TAB_DRAG_LOUPE,	tab_kind::drag_move_loupe	},
 			{ IDS_DLG_TAB_DRAG_TIP,		tab_kind::drag_show_tip		},

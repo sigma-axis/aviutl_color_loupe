@@ -63,6 +63,17 @@
 #define IDS_DESC_TIP_STICKY             159
 #define IDS_DESC_EXEDIT_FAKE            160
 #define IDS_DESC_GRID_KINDS             161
+#define IDS_DESC_CMD_NONE               162
+#define IDS_DESC_CMD_SWAP_ZOOM          163
+#define IDS_DESC_CMD_COPY_COLOR         164
+#define IDS_DESC_CMD_FOLL               165
+#define IDS_DESC_CMD_FOLLOW             165
+#define IDS_DESC_CMD_CENTRALIZE         166
+#define IDS_DESC_CMD_GRID               167
+#define IDS_DESC_CMD_ZOOM_UP            168
+#define IDS_DESC_CMD_ZOOM_DOWN          169
+#define IDS_DESC_CMD_CXT_MENU           170
+#define IDS_DESC_CMD_SETTINGS           171
 #define IDD_VSCROLLFORM                 800
 #define IDD_SETTINGS                    801
 #define IDD_SETTINGS_FORM_CLICK_ACTION  802
@@ -77,6 +88,7 @@
 #define IDD_SETTINGS_FORM_GRID          811
 #define IDD_SETTINGS_FORM_CMD_SWAP      812
 #define IDD_SETTINGS_FORM_CMD_ZOOM_STEP 813
+#define IDD_SETTINGS_FORM_CMD_DESC      814
 #define IDC_LIST1                       1001
 #define IDC_COMBO1                      1002
 #define IDC_COMBO2                      1003
@@ -120,7 +132,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        814
+#define _APS_NEXT_RESOURCE_VALUE        815
 #define _APS_NEXT_COMMAND_VALUE         40014
 #define _APS_NEXT_CONTROL_VALUE         1026
 #define _APS_NEXT_SYMED_VALUE           101

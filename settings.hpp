@@ -198,7 +198,7 @@ inline constinit struct Settings {
 	struct ClickActions {
 		enum Command : uint8_t {
 			none = 0,
-			swap_zoom_level		= 1,
+			swap_zoom_level			= 1,
 			copy_color_code			= 2,
 			toggle_follow_cursor	= 3,
 			centralize				= 4,
@@ -221,11 +221,11 @@ inline constinit struct Settings {
 			x2{ none,none };
 
 		WheelZoom::Pivot swap_zoom_level_pivot = WheelZoom::cursor;
-		WheelZoom::Pivot zoom_step_pivot = WheelZoom::cursor;
-		uint8_t zoom_step_num_steps = 1;
+		WheelZoom::Pivot step_zoom_pivot = WheelZoom::cursor;
+		uint8_t step_zoom_num_steps = 1;
 		constexpr static uint8_t
-			zoom_step_num_steps_min = WheelZoom::num_steps_min,
-			zoom_step_num_steps_max = WheelZoom::num_steps_max;
+			step_zoom_num_steps_min = WheelZoom::num_steps_min,
+			step_zoom_num_steps_max = WheelZoom::num_steps_max;
 	} commands;
 
 	// loading from .ini file.
@@ -319,8 +319,8 @@ inline constinit struct Settings {
 		load_enum(commands, x2.dblclk);
 
 		load_enum(commands, swap_zoom_level_pivot);
-		load_enum(commands, zoom_step_pivot);
-		load_int(commands, zoom_step_num_steps);
+		load_enum(commands, step_zoom_pivot);
+		load_int(commands, step_zoom_num_steps);
 
 #undef load_drag
 #undef load_color
@@ -417,8 +417,8 @@ inline constinit struct Settings {
 		save_dec(commands, x2.dblclk);
 
 		save_dec(commands, swap_zoom_level_pivot);
-		save_dec(commands, zoom_step_pivot);
-		save_dec(commands, zoom_step_num_steps);
+		save_dec(commands, step_zoom_pivot);
+		save_dec(commands, step_zoom_num_steps);
 
 		// lines commented out are setting items that threre're no means to change at runtime.
 

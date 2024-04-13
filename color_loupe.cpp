@@ -1416,10 +1416,10 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 	case ca::zoom_step_down:
 	case ca::zoom_step_up:
 	{
-		auto steps = settings.commands.zoom_step_num_steps;
+		auto steps = settings.commands.step_zoom_num_steps;
 		if (cmd == ca::zoom_step_down) steps = -steps;
 		double x = 0, y = 0;
-		if (settings.commands.zoom_step_pivot != Settings::WheelZoom::center)
+		if (settings.commands.step_zoom_pivot != Settings::WheelZoom::center)
 			std::tie(x, y) = rel_win_center();
 		return apply_zoom(loupe_state.zoom.zoom_level + steps, x, y);
 	}
@@ -1712,7 +1712,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha8"
+#define PLUGIN_VERSION	"v2.00-alpha9"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
