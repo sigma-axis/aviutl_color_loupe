@@ -97,7 +97,7 @@ static inline constinit struct LoupeState {
 		uint8_t visible_level = 0; // 0: not visible, 1: not visible until mouse enters, >= 2: visible.
 		constexpr bool is_visible() const { return visible_level > 1; }
 		bool prefer_above = false;
-	} tip_state;
+	} tip;
 
 	// toast --- notification message.
 	struct Toast {
@@ -172,7 +172,7 @@ static inline constinit struct LoupeState {
 	// change the scale keeping the specified position unchanged.
 	void apply_zoom(int new_level, double win_ox, double win_oy, int pic_w, int pic_h) {
 		auto s = zoom.scale_ratio_inv();
-		zoom.scale_level = std::clamp(new_level, zoom.scale_level_min, zoom.scale_level_max);
+		zoom.scale_level = std::clamp(new_level, Zoom::scale_level_min, Zoom::scale_level_max);
 		s -= zoom.scale_ratio_inv();
 
 		position.x += s * win_ox; position.y += s * win_oy;
@@ -184,7 +184,7 @@ static inline constinit struct LoupeState {
 	{
 		auto w2 = picture_w / 2, h2 = picture_h / 2;
 		position.x = static_cast<double>(w2); position.y = static_cast<double>(h2);
-		tip_state = { .x = w2, .y = h2, .visible_level = 0 };
+		tip = { .x = w2, .y = h2, .visible_level = 0 };
 	}
 } loupe_state;
 static_assert(LoupeState::Zoom::scale_level_max == Settings::ZoomBehavior::max_scale_level_max);
@@ -217,10 +217,10 @@ static inline void load_settings()
 	// additionally load the following loupe states.
 	loupe_state.zoom.scale_level = std::clamp(
 		static_cast<int>(::GetPrivateProfileIntA("state", "scale_level", loupe_state.zoom.scale_level, path)),
-		loupe_state.zoom.scale_level_min, loupe_state.zoom.scale_level_max);
+		LoupeState::Zoom::scale_level_min, LoupeState::Zoom::scale_level_max);
 	loupe_state.zoom.second_level = std::clamp(
 		static_cast<int>(::GetPrivateProfileIntA("state", "second_scale", loupe_state.zoom.second_level, path)),
-		loupe_state.zoom.scale_level_min, loupe_state.zoom.scale_level_max);
+		LoupeState::Zoom::scale_level_min, LoupeState::Zoom::scale_level_max);
 	loupe_state.position.follow_cursor = ::GetPrivateProfileIntA("state", "follow_cursor",
 		loupe_state.position.follow_cursor ? 1 : 0, path) != 0;
 	loupe_state.grid.visible = ::GetPrivateProfileIntA("state", "show_grid",
@@ -370,31 +370,6 @@ static constinit Handle<HMENU, []{ return ::LoadMenuW(this_dll, MAKEINTRESOURCEW
 
 
 ////////////////////////////////
-// 外部リソース管理．
-////////////////////////////////
-static inline constinit class {
-	bool activated = false;
-
-public:
-	// global switch for allocating external resources.
-	constexpr bool is_active() const { return activated; }
-	void activate() { activated = true; }
-	void deactivate()
-	{
-		activated = false;
-		free();
-	}
-	void free()
-	{
-		image.free();
-		tip_font.free();
-		toast_font.free();
-		cxt_menu.free();
-	}
-} ext_obj;
-
-
-////////////////////////////////
 // 通知メッセージのタイマー管理．
 ////////////////////////////////
 static inline constinit class ToastManager {
@@ -403,7 +378,7 @@ static inline constinit class ToastManager {
 	constexpr static auto& toast = loupe_state.toast;
 
 public:
-	auto timer_id() const { return reinterpret_cast<intptr_t>(this); }
+	auto timer_id() const { return reinterpret_cast<uintptr_t>(this); }
 	bool is_active() const { return active; }
 
 	HWND destination() const { return hwnd; }
@@ -439,6 +414,32 @@ public:
 		toast.visible = false;
 	}
 } toast_manager;
+
+
+////////////////////////////////
+// 外部リソース管理．
+////////////////////////////////
+static inline constinit class {
+	bool activated = false;
+
+public:
+	// global switch for allocating external resources.
+	constexpr bool is_active() const { return activated; }
+	void activate() { activated = true; }
+	void deactivate()
+	{
+		activated = false;
+		free();
+	}
+	void free()
+	{
+		image.free();
+		tip_font.free();
+		toast_font.free();
+		cxt_menu.free();
+		toast_manager.on_timer();
+	}
+} ext_obj;
 
 
 ////////////////////////////////
@@ -693,9 +694,23 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 static inline void draw_blank(HWND hwnd)
 {
 	RECT rc; ::GetClientRect(hwnd, &rc);
-	HDC hdc = ::GetDC(hwnd);
-	draw_backplane(hdc, rc);
-	::ReleaseDC(hwnd, hdc);
+	HDC window_hdc = ::GetDC(hwnd);
+
+	if (loupe_state.toast.visible && ext_obj.is_active()) {
+		// needs to draw a toast. prepare a back buffer.
+		HDC hdc = ::CreateCompatibleDC(window_hdc);
+		auto tmp_bmp = ::SelectObject(hdc, ::CreateCompatibleBitmap(window_hdc, rc.right, rc.bottom));
+
+		draw_backplane(hdc, rc);
+		draw_toast(hdc, rc.right, rc.bottom);
+
+		// copy to the front buffer and delete the back buffer.
+		::BitBlt(window_hdc, 0, 0, rc.right, rc.bottom, hdc, 0, 0, SRCCOPY);
+		::DeleteObject(::SelectObject(hdc, tmp_bmp));
+		::DeleteDC(hdc);
+	}
+	else draw_backplane(window_hdc, rc);
+	::ReleaseDC(hwnd, window_hdc);
 }
 // メインの描画関数．
 static inline void draw(HWND hwnd)
@@ -717,7 +732,7 @@ static inline void draw(HWND hwnd)
 		settings.grid.grid_thick(loupe_state.zoom.scale_level) : 0;
 
 	// whether the tip is visible.
-	constexpr auto& tip = loupe_state.tip_state;
+	constexpr auto& tip = loupe_state.tip;
 	bool with_tip = tip.is_visible() &&
 		tip.x >= 0 && tip.x < image.width() && tip.y >= 0 && tip.y < image.height();
 
@@ -848,7 +863,7 @@ protected:
 } loupe_drag;
 
 static inline constinit class : public DragState {
-	constexpr static auto& tip = loupe_state.tip_state;
+	constexpr static auto& tip = loupe_state.tip;
 	POINT init{};
 
 protected:
@@ -1111,30 +1126,18 @@ static inline bool toggle_grid()
 		loupe_state.grid.visible ? IDS_TOAST_GRID_ON : IDS_TOAST_GRID_OFF);
 	return true;
 }
-// this function requires image.is_valid() being true.
 static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 {
 	// ignore if the scale level is identical.
-	new_level = std::clamp<int>(new_level, settings.zoom.min_scale_level, settings.zoom.max_scale_level);
+	new_level = std::clamp(new_level,
+		std::max<int>(settings.zoom.min_scale_level, LoupeState::Zoom::scale_level_min),
+		std::min<int>(settings.zoom.max_scale_level, LoupeState::Zoom::scale_level_max));
 	if (new_level == loupe_state.zoom.scale_level) return false;
 
 	// apply.
-	loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
-
-	// update the tip position if necessary.
-	if (loupe_state.tip_state.is_visible() &&
-		(settings.tip_drag.mode == Settings::TipDrag::sticky ||
-			DragState::current_drag<DragState>() == &tip_drag)) {
-		// TODO: find more "proper" way to get hwnd.
-		if (auto hwnd = toast_manager.destination(); hwnd != nullptr) {
-			POINT pt; ::GetCursorPos(&pt); ::ScreenToClient(hwnd, &pt);
-			RECT rc; ::GetClientRect(hwnd, &rc);
-
-			auto [x, y] = loupe_state.win2pic(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
-			loupe_state.tip_state.x = static_cast<int>(std::floor(x));
-			loupe_state.tip_state.y = static_cast<int>(std::floor(y));
-		}
-	}
+	if (image.is_valid())
+		loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
+	else loupe_state.zoom.scale_level = new_level;
 
 	// toast message.
 	if (!settings.toast.notify_scale) return true;
@@ -1160,8 +1163,6 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 }
 static inline bool swap_scale_level(double win_ox, double win_oy, Settings::WheelZoom::Pivot pivot)
 {
-	if (!image.is_valid()) return false;
-
 	auto level = loupe_state.zoom.scale_level;
 	std::swap(level, loupe_state.zoom.second_level);
 
@@ -1236,6 +1237,21 @@ static inline bool copy_coordinate(double win_ox, double win_oy, bool from_cente
 	toast_manager.set_message(settings.toast.duration, IDS_TOAST_CLIPBOARD, buf);
 	return true;
 }
+// update the tip position when it's following the mouse cursor. returns true for all cases.
+static inline bool tip_to_cursor(HWND hwnd)
+{
+	if (!loupe_state.tip.is_visible()
+		|| (settings.tip_drag.mode != Settings::TipDrag::sticky &&
+			DragState::current_drag<DragState>() != &tip_drag)) return true;
+
+	POINT pt; ::GetCursorPos(&pt); ::ScreenToClient(hwnd, &pt);
+	RECT rc; ::GetClientRect(hwnd, &rc);
+
+	auto [x, y] = loupe_state.win2pic(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+	loupe_state.tip.x = static_cast<int>(std::floor(x));
+	loupe_state.tip.y = static_cast<int>(std::floor(y));
+	return true;
+}
 static inline bool open_settings(HWND hwnd)
 {
 	if (dialogs::open_settings(hwnd)) {
@@ -1243,10 +1259,10 @@ static inline bool open_settings(HWND hwnd)
 		toast_manager.on_timer();
 
 		// hide the tip as settings for the tip might have changed.
-		loupe_state.tip_state.visible_level = 0;
+		loupe_state.tip.visible_level = 0;
 
 		// re-apply the scale level, as its valid range might have changed.
-		if (image.is_valid()) apply_zoom(loupe_state.zoom.scale_level, 0, 0);
+		apply_zoom(loupe_state.zoom.scale_level, 0, 0);
 
 		// no need to discard font handles for new font settings,
 		// as there's no option at this point yet.
@@ -1291,6 +1307,8 @@ struct Menu {
 	// returns true if needs redraw.
 	static bool on_menu_command(HWND hwnd, uint32_t id, bool by_mouse, const POINT& pt_screen = {0, 0})
 	{
+		if (!ext_obj.is_active()) return false;
+
 		auto win_center = [&] {
 			POINT pt = pt_screen; ::ScreenToClient(hwnd, &pt);
 			RECT rc; ::GetClientRect(hwnd, &rc);
@@ -1325,7 +1343,7 @@ struct Menu {
 
 		case IDM_CXT_FOLLOW_CURSOR:	return toggle_follow_cursor();
 		case IDM_CXT_SHOW_GRID:		return toggle_grid();
-		case IDM_CXT_SWAP_SCALE:	return swap_scale_level(0, 0, Settings::WheelZoom::center);
+		case IDM_CXT_SWAP_SCALE:	return swap_scale_level(0, 0, Settings::WheelZoom::center) && tip_to_cursor(hwnd);
 		case IDM_CXT_CENTRALIZE:	return centralize();
 
 		case IDM_CXT_REVERSE_WHEEL:
@@ -1339,7 +1357,7 @@ struct Menu {
 		case IDM_CXT_TIP_MODE_STATIONARY:	settings.tip_drag.mode = Settings::TipDrag::stationary;	goto hide_tip_and_redraw;
 		case IDM_CXT_TIP_MODE_STICKY:		settings.tip_drag.mode = Settings::TipDrag::sticky;		goto hide_tip_and_redraw;
 		hide_tip_and_redraw:
-			loupe_state.tip_state.visible_level = 0;
+			loupe_state.tip.visible_level = 0;
 			return true;
 
 		case IDM_CXT_SETTINGS:
@@ -1363,6 +1381,8 @@ static inline void on_update(int w, int h, void* source)
 }
 static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, const POINT& pt)
 {
+	if (!ext_obj.is_active()) return false;
+
 	auto win_center = [&]() {
 		RECT rc; ::GetClientRect(hwnd, &rc);
 		return std::make_pair(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
@@ -1377,7 +1397,7 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 	case ca::swap_scale_level:
 	{
 		auto [x, y] = win_center();
-		return swap_scale_level(x, y, settings.commands.swap_scale_level_pivot);
+		return swap_scale_level(x, y, settings.commands.swap_scale_level_pivot) && tip_to_cursor(hwnd);
 	}
 	case ca::toggle_grid:
 		return toggle_grid();
@@ -1475,9 +1495,9 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 	case WM_TIMER:
 		// update of the toast message to dissapear.
-		if (static_cast<UINT_PTR>(wparam) == toast_manager.timer_id()) {
+		if (static_cast<uintptr_t>(wparam) == toast_manager.timer_id()) {
 			toast_manager.on_timer();
-			cxt.redraw_loupe = image.is_valid();
+			cxt.redraw_loupe = true;
 		}
 		break;
 
@@ -1527,25 +1547,25 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_MOUSEMOVE:
 		if (DragState::Delta(cursor_pos(lparam), cxt)) /* empty */;
 		else if (!image.is_valid()) break;
-		else if (settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip_state.visible_level > 0) {
+		else if (settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip.visible_level > 0) {
 			// update to the tip of "sticky" mode.
 			auto pt = cursor_pos(lparam);
 			RECT rc; ::GetClientRect(hwnd, &rc);
 			auto [x, y] = loupe_state.win2pic(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
 			auto X = static_cast<int>(std::floor(x)), Y = static_cast<int>(std::floor(y));
 
-			if (!loupe_state.tip_state.is_visible() ||
-				X != loupe_state.tip_state.x || Y != loupe_state.tip_state.y) {
+			if (!loupe_state.tip.is_visible() ||
+				X != loupe_state.tip.x || Y != loupe_state.tip.y) {
 
-				loupe_state.tip_state.visible_level = 2;
-				loupe_state.tip_state.x = X;
-				loupe_state.tip_state.y = Y;
+				loupe_state.tip.visible_level = 2;
+				loupe_state.tip.x = X;
+				loupe_state.tip.y = Y;
 
 				cxt.redraw_loupe = true;
 			}
 		}
 		if (!track_mouse_event_sent &&
-			settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip_state.is_visible()) {
+			settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip.is_visible()) {
 			track_mouse_event_sent = true;
 			// to make WM_MOUSELEAVE message be sent.
 			TRACKMOUSEEVENT tme{ .cbSize = sizeof(TRACKMOUSEEVENT), .dwFlags = TME_LEAVE, .hwndTrack = hwnd };
@@ -1555,15 +1575,15 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_MOUSELEAVE:
 		track_mouse_event_sent = false;
 		// hide the "sticky" tip.
-		if (settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip_state.is_visible()) {
-			loupe_state.tip_state.visible_level = 1;
+		if (settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip.is_visible()) {
+			loupe_state.tip.visible_level = 1;
 			cxt.redraw_loupe = true;
 		}
 		break;
 
 	case WM_MOUSEWHEEL:
 		// wheel to zoom in/out.
-		if (image.is_valid()) {
+		if (ext_obj.is_active()){
 			auto zoom = DragState::CurrentWheelZoom();
 			if (!zoom.enabled) break;
 
@@ -1587,8 +1607,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			}
 
 			// then apply the zoom.
-			if (apply_zoom(loupe_state.zoom.scale_level + delta, ox, oy))
-				cxt.redraw_loupe = true;
+			cxt.redraw_loupe |= apply_zoom(loupe_state.zoom.scale_level + delta, ox, oy) && tip_to_cursor(hwnd);
 		}
 		break;
 
@@ -1623,8 +1642,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	case WM_COMMAND:
 		// menu commands.
 		if ((wparam >> 16) == 0 && lparam == 0) // criteria for the menu commands.
-			cxt.redraw_loupe = Menu::on_menu_command(hwnd, wparam & 0xffff, false) &&
-				::IsWindowVisible(hwnd) != FALSE;
+			cxt.redraw_loupe = Menu::on_menu_command(hwnd, wparam & 0xffff, false);
 		break;
 
 	case WM_KEYDOWN:
@@ -1652,7 +1670,6 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 	if (cxt.redraw_loupe) {
 		// when redrawing is required, proccess here.
 		// returning TRUE from this function may cause flickering in the main window.
-		// TODO: draw toast message even if image.is_valid() is false.
 		if (image.is_valid() &&
 			fp->exfunc->is_editing(editp) && !fp->exfunc->is_saving(editp)) draw(hwnd);
 		else draw_blank(hwnd);
@@ -1680,7 +1697,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha3"
+#define PLUGIN_VERSION	"v2.00-alpha4"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
