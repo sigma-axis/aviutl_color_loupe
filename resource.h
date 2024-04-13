@@ -22,6 +22,7 @@
 #define IDD_SETTINGS_FORM_TOAST         118
 #define IDD_SETTINGS_FORM_GRID          119
 #define IDD_SETTINGS_FORM_CMD_SWAP      120
+#define IDD_SETTINGS_FORM_CMD_ZOOM_STEP 121
 #define IDC_LIST1                       1001
 #define IDC_COMBO1                      1002
 #define IDC_COMBO2                      1003
@@ -65,7 +66,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        121
+#define _APS_NEXT_RESOURCE_VALUE        122
 #define _APS_NEXT_COMMAND_VALUE         40014
 #define _APS_NEXT_CONTROL_VALUE         1026
 #define _APS_NEXT_SYMED_VALUE           101

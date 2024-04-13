@@ -104,16 +104,17 @@ static int get_slider_value(HWND slider) {
 // クリック操作選択．
 ////////////////////////////////
 class click_action : public dialog_base {
+	using Button = Settings::ClickActions::Button;
 	using Command = Settings::ClickActions::Command;
 
 public:
-	Command& cmd_single, & cmd_double;
-	click_action( Command& cmd_single, Command& cmd_double)
-		: cmd_single{ cmd_single }, cmd_double{ cmd_double } {}
+	Button& btn;
+	click_action(Button& btn)
+		: btn{ btn } {}
 
 private:
-	void on_change_single(Command data_new) { cmd_single = data_new; }
-	void on_change_double(Command data_new) { cmd_double = data_new; }
+	void on_change_single(Command data_new) { btn.click = data_new; }
+	void on_change_double(Command data_new) { btn.dblclk = data_new; }
 
 protected:
 	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_CLICK_ACTION; }
@@ -125,13 +126,15 @@ protected:
 			Command data;
 		} combo_data[] = {
 			{ L"(何もしない)",		Command::none					},
-			{ L"編集画面の中央へ移動",	Command::centralize				},
-			{ L"カーソル追従切り替え",	Command::toggle_follow_cursor	},
 			{ L"拡大率切り替え",		Command::swap_scale_level		},
-			{ L"グリッド表示切替",	Command::toggle_grid			},
 			{ L"カラーコードをコピー",	Command::copy_color_code		},
+			{ L"カーソル追従切り替え",	Command::toggle_follow_cursor	},
+			{ L"編集画面の中央へ移動",	Command::centralize				},
+			{ L"グリッド表示切替",	Command::toggle_grid			},
+			{ L"拡大率を上げる",		Command::scale_step_up			},
+			{ L"拡大率を下げる",		Command::scale_step_down		},
 			{ L"メニューを表示",		Command::context_menu			},
-			{ L"設定ウィンドウ",		Command::settings				},
+			{ L"このウィンドウを表示",	Command::settings				},
 		};
 
 		// suppress notifications from controls.
@@ -141,9 +144,9 @@ protected:
 			Command curr;
 			switch (id) {
 			case IDC_COMBO1:
-				curr = cmd_single; break;
+				curr = btn.click; break;
 			case IDC_COMBO2:
-				curr = cmd_double; break;
+				curr = btn.dblclk; break;
 			default: std::unreachable();
 			}
 
@@ -438,6 +441,7 @@ protected:
 					on_change_steps(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN1)));
 					return true;
 				}
+				break;
 			}
 			break;
 		}
@@ -505,6 +509,7 @@ protected:
 					on_change_rail(get_combo_data<RailMode>(ctrl));
 					return true;
 				}
+				break;
 			}
 			break;
 		}
@@ -599,6 +604,7 @@ protected:
 					on_change_rail(get_combo_data<RailMode>(ctrl));
 					return true;
 				}
+				break;
 			}
 			break;
 		}
@@ -666,6 +672,7 @@ protected:
 					on_change_alt(get_combo_data<KeyDisguise>(ctrl));
 					return true;
 				}
+				break;
 			}
 			break;
 		}
@@ -885,7 +892,9 @@ protected:
 					on_change_scale_format(get_combo_data<ScaleFormat>(ctrl));
 					return true;
 				}
+				break;
 			}
+			break;
 		}
 		}
 		return false;
@@ -1021,6 +1030,76 @@ protected:
 					on_change_swap_pivot(get_combo_data<Pivot>(ctrl));
 					return true;
 				}
+				break;
+			}
+			break;
+		}
+		return false;
+	}
+};
+
+
+class command_step_scale : public dialog_base {
+	using Pivot = Settings::WheelZoom::Pivot;
+	using ClickActions = Settings::ClickActions;
+
+public:
+	Pivot& pivot;
+	uint8_t& steps;
+	command_step_scale(Pivot& pivot, uint8_t& steps) : pivot{ pivot }, steps{ steps } {}
+
+private:
+	void on_change_step_pivot(Pivot data_new) { pivot = data_new; }
+	void on_change_num_steps(uint8_t data_new) {
+		steps = std::clamp(data_new, ClickActions::scale_step_num_steps_min, ClickActions::scale_step_num_steps_max);
+	}
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_CMD_ZOOM_STEP; }
+
+	bool on_init(HWND) override
+	{
+		constexpr struct {
+			const wchar_t* desc; // TODO: move these strings to resource.
+			Pivot data;
+		} combo_data[] = {
+			{ L"ウィンドウ中央",	Pivot::center	},
+			{ L"カーソル位置",	Pivot::cursor	},
+		};
+		constexpr auto desc_data = // TODO: move this string to resource. (note that this is shared by another dialog form.)
+			L"ホイール入力1回で拡大率を何段階変化させるかを指定します．"
+			L"4段階増える(減る)ごとに拡大率は2倍(半分)になります．";
+
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, combo_data);
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), steps, ClickActions::scale_step_num_steps_min, ClickActions::scale_step_num_steps_max);
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(desc_data));
+
+		return false;
+	}
+
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case CBN_SELCHANGE:
+				switch (id) {
+				case IDC_COMBO1:
+					on_change_step_pivot(get_combo_data<Pivot>(ctrl));
+					return true;
+				}
+				break;
+			case EN_CHANGE:
+				switch (id) {
+				case IDC_EDIT1:
+					on_change_num_steps(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN1)));
+					return true;
+				}
+				break;
 			}
 			break;
 		}
@@ -1063,34 +1142,29 @@ class setting_dlg : public dialog_base {
 	{
 		switch (kind) {
 			{
-				Settings::ClickActions::Command* cmd1, * cmd2;
+				Settings::ClickActions::Button* btn;
 		case tab_kind::action_left:
-			cmd1 = &curr.commands.left_click;
-			cmd2 = &curr.commands.left_dblclk;
+			btn = &curr.commands.left;
 			goto click_pages;
 
 		case tab_kind::action_right:
-			cmd1 = &curr.commands.right_click;
-			cmd2 = &curr.commands.right_dblclk;
+			btn = &curr.commands.right;
 			goto click_pages;
 
 		case tab_kind::action_middle:
-			cmd1 = &curr.commands.middle_click;
-			cmd2 = &curr.commands.middle_dblclk;
+			btn = &curr.commands.middle;
 			goto click_pages;
 
 		case tab_kind::action_x1_button:
-			cmd1 = &curr.commands.x1_click;
-			cmd2 = &curr.commands.x1_dblclk;
+			btn = &curr.commands.x1;
 			goto click_pages;
 
 		case tab_kind::action_x2_button:
-			cmd1 = &curr.commands.x2_click;
-			cmd2 = &curr.commands.x2_dblclk;
+			btn = &curr.commands.x2;
 
 		click_pages:
 			return new vscroll_form{
-				new click_action{ *cmd1, *cmd2 },
+				new click_action{ *btn },
 			};
 			}
 
@@ -1136,6 +1210,7 @@ class setting_dlg : public dialog_base {
 		case tab_kind::commands:
 			return new vscroll_form{
 				new command_swap_scale{ curr.commands.swap_scale_level_pivot },
+				new command_step_scale{ curr.commands.scale_step_pivot, curr.commands.scale_step_num_steps },
 			};
 		}
 		return nullptr;

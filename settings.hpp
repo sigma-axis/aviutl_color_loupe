@@ -198,33 +198,34 @@ inline constinit struct Settings {
 	struct ClickActions {
 		enum Command : uint8_t {
 			none = 0,
-			swap_scale_level = 1,
-			copy_color_code = 2,
-			toggle_follow_cursor = 3,
-			centralize = 4,
-			toggle_grid = 5,
-			settings = 201,
-			context_menu = 202,
+			swap_scale_level		= 1,
+			copy_color_code			= 2,
+			toggle_follow_cursor	= 3,
+			centralize				= 4,
+			toggle_grid				= 5,
+			scale_step_down			= 6,
+			scale_step_up			= 7,
+			settings				= 201,
+			context_menu			= 202,
 			// TODO: add the following new commands.
-			// scale_step_up, scale_step_down
 			// copy_coord_tl (copy coordinate relative to the top-left of the image)
 			// copy_coord_c (copy coordinate relative to the center of the image)
-			// centralize_2 (move the clicked point to the center of the loupe)
+			// centralize_pt (move the clicked point to the center of the loupe)
 		};
-		Command
-			left_click		= none,
-			right_click		= context_menu,
-			middle_click	= toggle_follow_cursor,
-			x1_click		= none,
-			x2_click		= none,
-
-			left_dblclk		= swap_scale_level,
-			right_dblclk	= copy_color_code,
-			middle_dblclk	= none,
-			x1_dblclk		= none,
-			x2_dblclk		= none;
+		struct Button {
+			Command click, dblclk;
+		}	left{ none, swap_scale_level },
+			right{ context_menu, copy_color_code },
+			middle{ toggle_follow_cursor, none },
+			x1{ none, none },
+			x2{ none,none };
 
 		WheelZoom::Pivot swap_scale_level_pivot = WheelZoom::cursor;
+		WheelZoom::Pivot scale_step_pivot = WheelZoom::cursor;
+		uint8_t scale_step_num_steps = 1;
+		constexpr static uint8_t
+			scale_step_num_steps_min = WheelZoom::num_steps_min,
+			scale_step_num_steps_max = WheelZoom::num_steps_max;
 	} commands;
 
 	// loading from .ini file.
@@ -306,18 +307,20 @@ inline constinit struct Settings {
 		load_int(grid, least_scale_thin);
 		load_int(grid, least_scale_thick);
 
-		load_enum(commands, left_click);
-		load_enum(commands, right_click);
-		load_enum(commands, middle_click);
-		load_enum(commands, x1_click);
-		load_enum(commands, x2_click);
-		load_enum(commands, left_dblclk);
-		load_enum(commands, right_dblclk);
-		load_enum(commands, middle_dblclk);
-		load_enum(commands, x1_dblclk);
-		load_enum(commands, x2_dblclk);
+		load_enum(commands, left.click);
+		load_enum(commands, left.dblclk);
+		load_enum(commands, right.click);
+		load_enum(commands, right.dblclk);
+		load_enum(commands, middle.click);
+		load_enum(commands, middle.dblclk);
+		load_enum(commands, x1.click);
+		load_enum(commands, x1.dblclk);
+		load_enum(commands, x2.click);
+		load_enum(commands, x2.dblclk);
 
 		load_enum(commands, swap_scale_level_pivot);
+		load_enum(commands, scale_step_pivot);
+		load_int(commands, scale_step_num_steps);
 
 #undef load_drag
 #undef load_color
@@ -385,7 +388,7 @@ inline constinit struct Settings {
 		save_bool(toast, notify_clipboard);
 		save_dec(toast, placement);
 		save_dec(toast, scale_format);
-		//save_dec(toast, duration);
+		save_dec(toast, duration);
 		//save_dec(toast, font_size);
 		//save_dec(toast, chrome_thick);
 		//save_dec(toast, chrome_radius);
@@ -399,21 +402,23 @@ inline constinit struct Settings {
 		//	::WriteProfileStringA("toast", "font_name", buf_ansi);
 		//}
 
-		//save_dec(grid, least_scale_thin);
-		//save_dec(grid, least_scale_thick);
+		save_dec(grid, least_scale_thin);
+		save_dec(grid, least_scale_thick);
 
-		save_dec(commands, left_click);
-		save_dec(commands, right_click);
-		save_dec(commands, middle_click);
-		save_dec(commands, x1_click);
-		save_dec(commands, x2_click);
-		save_dec(commands, left_dblclk);
-		save_dec(commands, right_dblclk);
-		save_dec(commands, middle_dblclk);
-		save_dec(commands, x1_dblclk);
-		save_dec(commands, x2_dblclk);
+		save_dec(commands, left.click);
+		save_dec(commands, left.dblclk);
+		save_dec(commands, right.click);
+		save_dec(commands, right.dblclk);
+		save_dec(commands, middle.click);
+		save_dec(commands, middle.dblclk);
+		save_dec(commands, x1.click);
+		save_dec(commands, x1.dblclk);
+		save_dec(commands, x2.click);
+		save_dec(commands, x2.dblclk);
 
 		save_dec(commands, swap_scale_level_pivot);
+		save_dec(commands, scale_step_pivot);
+		save_dec(commands, scale_step_num_steps);
 
 		// lines commented out are setting items that threre're no means to change at runtime.
 

@@ -1102,8 +1102,9 @@ static inline bool centralize_point(double win_ox, double win_oy)
 	if (!image.is_valid()) return false;
 
 	// move the target point to the specified position.
-	loupe_state.position.x = std::clamp<double>(win_ox, 0, image.width());
-	loupe_state.position.y = std::clamp<double>(win_oy, 0, image.height());
+	auto [x, y] = loupe_state.win2pic(win_ox, win_oy);
+	loupe_state.position.x = std::clamp<double>(x, 0, image.width());
+	loupe_state.position.y = std::clamp<double>(y, 0, image.height());
 	return true;
 }
 static inline bool toggle_follow_cursor()
@@ -1309,7 +1310,7 @@ struct Menu {
 	{
 		if (!ext_obj.is_active()) return false;
 
-		auto win_center = [&] {
+		auto rel_win_center = [&] {
 			POINT pt = pt_screen; ::ScreenToClient(hwnd, &pt);
 			RECT rc; ::GetClientRect(hwnd, &rc);
 			return std::make_pair(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
@@ -1318,32 +1319,41 @@ struct Menu {
 		switch (id) {
 		case IDM_CXT_PT_COPY_COLOR:
 			if (by_mouse) {
-				auto [x, y] = win_center();
+				auto [x, y] = rel_win_center();
 				return copy_color_code(x, y);
 			}
 			break;
 		case IDM_CXT_PT_COPY_COORD_TL:
 			if (by_mouse) {
-				auto [x, y] = win_center();
+				auto [x, y] = rel_win_center();
 				return copy_coordinate(x, y, false);
 			}
 			break;
 		case IDM_CXT_PT_COPY_COORD_C:
 			if (by_mouse) {
-				auto [x, y] = win_center();
+				auto [x, y] = rel_win_center();
 				return copy_coordinate(x, y, true);
 			}
 			break;
 		case IDM_CXT_PT_MOVE_CENTER:
 			if (by_mouse) {
-				auto [x, y] = win_center();
+				auto [x, y] = rel_win_center();
 				return centralize_point(x, y);
 			}
 			break;
 
 		case IDM_CXT_FOLLOW_CURSOR:	return toggle_follow_cursor();
 		case IDM_CXT_SHOW_GRID:		return toggle_grid();
-		case IDM_CXT_SWAP_SCALE:	return swap_scale_level(0, 0, Settings::WheelZoom::center) && tip_to_cursor(hwnd);
+		case IDM_CXT_SWAP_SCALE:
+		{
+			double x = 0, y = 0;
+			auto pivot = Settings::WheelZoom::center;
+			if (by_mouse) {
+				std::tie(x, y) = rel_win_center();
+				pivot = settings.commands.swap_scale_level_pivot;
+			}
+			return swap_scale_level(x, y, pivot) && tip_to_cursor(hwnd);
+		}
 		case IDM_CXT_CENTRALIZE:	return centralize();
 
 		case IDM_CXT_REVERSE_WHEEL:
@@ -1383,34 +1393,39 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 {
 	if (!ext_obj.is_active()) return false;
 
-	auto win_center = [&]() {
+	auto rel_win_center = [&] {
 		RECT rc; ::GetClientRect(hwnd, &rc);
 		return std::make_pair(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
 	};
 
 	switch (cmd) {
 		using ca = Settings::ClickActions;
-	case ca::centralize:
-		return centralize();
-	case ca::toggle_follow_cursor:
-		return toggle_follow_cursor();
 	case ca::swap_scale_level:
 	{
-		auto [x, y] = win_center();
+		auto [x, y] = rel_win_center();
 		return swap_scale_level(x, y, settings.commands.swap_scale_level_pivot) && tip_to_cursor(hwnd);
 	}
-	case ca::toggle_grid:
-		return toggle_grid();
 	case ca::copy_color_code:
 	{
-		auto [x, y] = win_center();
+		auto [x, y] = rel_win_center();
 		return copy_color_code(x, y);
 	}
-	case ca::context_menu:
-		return Menu::popup_menu(hwnd, true);
+	case ca::toggle_follow_cursor:	return toggle_follow_cursor();
+	case ca::centralize:			return centralize();
+	case ca::toggle_grid:			return toggle_grid();
+	case ca::scale_step_down:
+	case ca::scale_step_up:
+	{
+		auto steps = settings.commands.scale_step_num_steps;
+		if (cmd == ca::scale_step_down) steps = -steps;
+		double x = 0, y = 0;
+		if (settings.commands.scale_step_pivot != Settings::WheelZoom::center)
+			std::tie(x, y) = rel_win_center();
+		return apply_zoom(loupe_state.zoom.scale_level + steps, x, y);
+	}
 
-	case ca::settings:
-		return open_settings(hwnd);
+	case ca::settings:		return open_settings(hwnd);
+	case ca::context_menu:	return Menu::popup_menu(hwnd, true);
 
 	case ca::none:
 	default: return false;
@@ -1521,22 +1536,22 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			// now recognized as a single click.
 
 			// find the assinged command.
-			auto command = [&] {
+			auto& btn = [&]() -> Settings::ClickActions::Button& {
 				switch (message) {
-				case WM_LBUTTONUP: return settings.commands.left_click;
-				case WM_RBUTTONUP: return settings.commands.right_click;
-				case WM_MBUTTONUP: return settings.commands.middle_click;
+				case WM_LBUTTONUP: return settings.commands.left;
+				case WM_RBUTTONUP: return settings.commands.right;
+				case WM_MBUTTONUP: return settings.commands.middle;
 				case WM_XBUTTONUP:
 				default:
 					if ((wparam >> 16) == XBUTTON1)
-						return settings.commands.x1_click;
+						return settings.commands.x1;
 					else
-						return settings.commands.x2_click;
+						return settings.commands.x2;
 				}
 			}();
 
-			// handle the command.
-			cxt.redraw_loupe |= on_command(hwnd, command, cursor_pos(lparam));
+			// handle that command.
+			cxt.redraw_loupe |= on_command(hwnd, btn.click, cursor_pos(lparam));
 		}
 		break;
 	case WM_CAPTURECHANGED:
@@ -1598,7 +1613,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 			// take the pivot into account.
 			double ox = 0, oy = 0;
-			if (Settings::WheelZoom::cursor == zoom.pivot) {
+			if (zoom.pivot != Settings::WheelZoom::center) {
 				auto pt = cursor_pos(lparam);
 				::ScreenToClient(hwnd, &pt);
 				RECT rc; ::GetClientRect(hwnd, &rc);
@@ -1613,17 +1628,17 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 	// option commands.
 	case WM_LBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, settings.commands.left_dblclk, cursor_pos(lparam));
+		cxt.redraw_loupe = on_command(hwnd, settings.commands.left.dblclk, cursor_pos(lparam));
 		break;
 	case WM_RBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, settings.commands.right_dblclk, cursor_pos(lparam));
+		cxt.redraw_loupe = on_command(hwnd, settings.commands.right.dblclk, cursor_pos(lparam));
 		break;
 	case WM_MBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, settings.commands.middle_dblclk, cursor_pos(lparam));
+		cxt.redraw_loupe = on_command(hwnd, settings.commands.middle.dblclk, cursor_pos(lparam));
 		break;
 	case WM_XBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, (wparam >> 16) == XBUTTON1 ?
-			settings.commands.x1_dblclk : settings.commands.x2_dblclk, cursor_pos(lparam));
+		cxt.redraw_loupe = on_command(hwnd, ((wparam >> 16) == XBUTTON1 ?
+			settings.commands.x1 : settings.commands.x2).dblclk, cursor_pos(lparam));
 		break;
 
 	case FilterMessage::MainMouseMove:
@@ -1697,7 +1712,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha4"
+#define PLUGIN_VERSION	"v2.00-alpha5"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
