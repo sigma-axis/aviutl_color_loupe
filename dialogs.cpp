@@ -126,13 +126,13 @@ protected:
 			Command data;
 		} combo_data[] = {
 			{ L"(何もしない)",		Command::none					},
-			{ L"拡大率切り替え",		Command::swap_scale_level		},
+			{ L"拡大率切り替え",		Command::swap_zoom_level		},
 			{ L"カラーコードをコピー",	Command::copy_color_code		},
 			{ L"カーソル追従切り替え",	Command::toggle_follow_cursor	},
 			{ L"編集画面の中央へ移動",	Command::centralize				},
 			{ L"グリッド表示切替",	Command::toggle_grid			},
-			{ L"拡大率を上げる",		Command::scale_step_up			},
-			{ L"拡大率を下げる",		Command::scale_step_down		},
+			{ L"拡大率を上げる",		Command::zoom_step_up			},
+			{ L"拡大率を下げる",		Command::zoom_step_down			},
 			{ L"メニューを表示",		Command::context_menu			},
 			{ L"このウィンドウを表示",	Command::settings				},
 		};
@@ -692,13 +692,13 @@ public:
 
 private:
 	void on_change_min(int8_t data_new) {
-		zoom.min_scale_level = std::clamp(data_new, Zoom::min_scale_level_min, Zoom::min_scale_level_max);
+		zoom.min_zoom_level = std::clamp(data_new, Zoom::min_zoom_level_min, Zoom::min_zoom_level_max);
 	}
 	void on_change_max(int8_t data_new) {
-		zoom.max_scale_level = std::clamp(data_new, Zoom::max_scale_level_min, Zoom::max_scale_level_max);
+		zoom.max_zoom_level = std::clamp(data_new, Zoom::max_zoom_level_min, Zoom::max_zoom_level_max);
 	}
 	void set_text(int id, int level) {
-		auto [n, d] = Settings::HelperFunctions::ZoomScaleFromLevel(level);
+		auto [n, d] = Settings::HelperFunctions::ScaleFromZoomLevel(level);
 		wchar_t buf[std::size(L"0123.45")];
 		std::swprintf(buf, std::size(buf), L"%.2f", static_cast<double>(n) / d);
 		::SendMessageW(::GetDlgItem(hwnd, id), WM_SETTEXT,
@@ -713,15 +713,15 @@ protected:
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		auto slider = ::GetDlgItem(hwnd, IDC_SLIDER1);
-		init_slider(slider, zoom.min_scale_level,
-			Zoom::min_scale_level_min, Zoom::min_scale_level_max, 1, 4);
+		init_slider(slider, zoom.min_zoom_level,
+			Zoom::min_zoom_level_min, Zoom::min_zoom_level_max, 1, 4);
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(0));
-		set_text(IDC_EDIT1, zoom.min_scale_level);
+		set_text(IDC_EDIT1, zoom.min_zoom_level);
 		slider = ::GetDlgItem(hwnd, IDC_SLIDER2);
-		init_slider(slider, zoom.max_scale_level,
-			Zoom::max_scale_level_min, Zoom::max_scale_level_max, 1, 4);
+		init_slider(slider, zoom.max_zoom_level,
+			Zoom::max_zoom_level_min, Zoom::max_zoom_level_max, 1, 4);
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(0));
-		set_text(IDC_EDIT2, zoom.max_scale_level);
+		set_text(IDC_EDIT2, zoom.max_zoom_level);
 		return false;
 	}
 
@@ -733,21 +733,21 @@ protected:
 			switch (auto code = 0xffff & wparam) {
 			case TB_ENDTRACK:
 				// make sure minimum is less than maximum or equals.
-				if (zoom.min_scale_level > zoom.max_scale_level) {
+				if (zoom.min_zoom_level > zoom.max_zoom_level) {
 					int id_slider, id_edit;
 					switch (::GetDlgCtrlID(ctrl)) {
 					case IDC_SLIDER2:
 						id_slider = IDC_SLIDER1; id_edit = IDC_EDIT1;
-						zoom.min_scale_level = zoom.max_scale_level;
+						zoom.min_zoom_level = zoom.max_zoom_level;
 						break;
 					default:
 						id_slider = IDC_SLIDER2; id_edit = IDC_EDIT2;
-						zoom.max_scale_level = zoom.min_scale_level;
+						zoom.max_zoom_level = zoom.min_zoom_level;
 						break;
 					}
 					auto sc = suppress_callback();
-					set_slider_value(::GetDlgItem(hwnd, id_slider), zoom.min_scale_level);
-					set_text(id_edit, zoom.min_scale_level);
+					set_slider_value(::GetDlgItem(hwnd, id_slider), zoom.min_zoom_level);
+					set_text(id_edit, zoom.min_zoom_level);
 					return true;
 				}
 				break;
@@ -760,11 +760,11 @@ protected:
 				switch (::GetDlgCtrlID(ctrl)) {
 				case IDC_SLIDER1:
 					on_change_min(get_slider_value(ctrl));
-					set_text(IDC_EDIT1, zoom.min_scale_level);
+					set_text(IDC_EDIT1, zoom.min_zoom_level);
 					return true;
 				case IDC_SLIDER2:
 					on_change_max(get_slider_value(ctrl));
-					set_text(IDC_EDIT2, zoom.max_scale_level);
+					set_text(IDC_EDIT2, zoom.max_zoom_level);
 					return true;
 				}
 				break;
@@ -907,22 +907,22 @@ protected:
 ////////////////////////////////
 class grid_options : public dialog_base {
 	using Grid = Settings::Grid;
-	constexpr static auto scale_level_max = Settings::ZoomBehavior::max_scale_level_max;
+	constexpr static auto zoom_level_max = Settings::ZoomBehavior::max_zoom_level_max;
 public:
 	Grid& grid;
 	grid_options(Grid& grid) : grid{ grid } {}
 
 private:
 	void on_change_thin(int8_t data_new) {
-		grid.least_scale_thin = std::clamp(data_new, Grid::least_scale_thin_min, Grid::least_scale_thin_max);
+		grid.least_zoom_thin = std::clamp(data_new, Grid::least_zoom_thin_min, Grid::least_zoom_thin_max);
 	}
 	void on_change_thick(int8_t data_new) {
-		grid.least_scale_thick = std::clamp(data_new, Grid::least_scale_thick_min, Grid::least_scale_thick_max);
+		grid.least_zoom_thick = std::clamp(data_new, Grid::least_zoom_thick_min, Grid::least_zoom_thick_max);
 	}
 	void set_text(int id, int level) {
 		wchar_t buf[std::size(L"0123.45")]{ L"----" };
-		if (level <= scale_level_max) {
-			auto [n, d] = Settings::HelperFunctions::ZoomScaleFromLevel(level);
+		if (level <= zoom_level_max) {
+			auto [n, d] = Settings::HelperFunctions::ScaleFromZoomLevel(level);
 			std::swprintf(buf, std::size(buf), L"%.2f", static_cast<double>(n) / d);
 		}
 		::SendMessageW(::GetDlgItem(hwnd, id), WM_SETTEXT,
@@ -942,15 +942,15 @@ protected:
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		auto slider = ::GetDlgItem(hwnd, IDC_SLIDER1);
-		init_slider(slider, grid.least_scale_thin,
-			Grid::least_scale_thin_min, Grid::least_scale_thin_max, 1, 4);
-		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(scale_level_max));
-		set_text(IDC_EDIT1, grid.least_scale_thin);
+		init_slider(slider, grid.least_zoom_thin,
+			Grid::least_zoom_thin_min, Grid::least_zoom_thin_max, 1, 4);
+		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(zoom_level_max));
+		set_text(IDC_EDIT1, grid.least_zoom_thin);
 		slider = ::GetDlgItem(hwnd, IDC_SLIDER2);
-		init_slider(slider, grid.least_scale_thick,
-			Grid::least_scale_thick_min, Grid::least_scale_thick_max, 1, 4);
-		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(scale_level_max));
-		set_text(IDC_EDIT2, grid.least_scale_thick);
+		init_slider(slider, grid.least_zoom_thick,
+			Grid::least_zoom_thick_min, Grid::least_zoom_thick_max, 1, 4);
+		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(zoom_level_max));
+		set_text(IDC_EDIT2, grid.least_zoom_thick);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT, {}, reinterpret_cast<LPARAM>(desc_data));
 		return false;
 	}
@@ -969,11 +969,11 @@ protected:
 				switch (::GetDlgCtrlID(ctrl)) {
 				case IDC_SLIDER1:
 					on_change_thin(get_slider_value(ctrl));
-					set_text(IDC_EDIT1, grid.least_scale_thin);
+					set_text(IDC_EDIT1, grid.least_zoom_thin);
 					return true;
 				case IDC_SLIDER2:
 					on_change_thick(get_slider_value(ctrl));
-					set_text(IDC_EDIT2, grid.least_scale_thick);
+					set_text(IDC_EDIT2, grid.least_zoom_thick);
 					return true;
 				}
 				break;
@@ -988,12 +988,12 @@ protected:
 ////////////////////////////////
 // 一部コマンドの設定．
 ////////////////////////////////
-class command_swap_scale : public dialog_base {
+class command_swap_zoom : public dialog_base {
 	using Pivot = Settings::WheelZoom::Pivot;
 
 public:
 	Pivot& pivot;
-	command_swap_scale(Pivot& pivot) : pivot{ pivot } {}
+	command_swap_zoom(Pivot& pivot) : pivot{ pivot } {}
 
 private:
 	void on_change_swap_pivot(Pivot data_new) { pivot = data_new; }
@@ -1039,19 +1039,19 @@ protected:
 };
 
 
-class command_step_scale : public dialog_base {
+class command_step_zoom : public dialog_base {
 	using Pivot = Settings::WheelZoom::Pivot;
 	using ClickActions = Settings::ClickActions;
 
 public:
 	Pivot& pivot;
 	uint8_t& steps;
-	command_step_scale(Pivot& pivot, uint8_t& steps) : pivot{ pivot }, steps{ steps } {}
+	command_step_zoom(Pivot& pivot, uint8_t& steps) : pivot{ pivot }, steps{ steps } {}
 
 private:
 	void on_change_step_pivot(Pivot data_new) { pivot = data_new; }
 	void on_change_num_steps(uint8_t data_new) {
-		steps = std::clamp(data_new, ClickActions::scale_step_num_steps_min, ClickActions::scale_step_num_steps_max);
+		steps = std::clamp(data_new, ClickActions::zoom_step_num_steps_min, ClickActions::zoom_step_num_steps_max);
 	}
 
 protected:
@@ -1073,7 +1073,7 @@ protected:
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, combo_data);
-		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), steps, ClickActions::scale_step_num_steps_min, ClickActions::scale_step_num_steps_max);
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), steps, ClickActions::zoom_step_num_steps_min, ClickActions::zoom_step_num_steps_max);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
 			{}, reinterpret_cast<LPARAM>(desc_data));
 
@@ -1209,8 +1209,8 @@ class setting_dlg : public dialog_base {
 			};
 		case tab_kind::commands:
 			return new vscroll_form{
-				new command_swap_scale{ curr.commands.swap_scale_level_pivot },
-				new command_step_scale{ curr.commands.scale_step_pivot, curr.commands.scale_step_num_steps },
+				new command_swap_zoom{ curr.commands.swap_zoom_level_pivot },
+				new command_step_zoom{ curr.commands.zoom_step_pivot, curr.commands.zoom_step_num_steps },
 			};
 		}
 		return nullptr;

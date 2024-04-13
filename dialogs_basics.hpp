@@ -132,6 +132,9 @@ namespace dialogs::basics
 				parent, proc, reinterpret_cast<LPARAM>(this));
 		}
 
+		dialog_base() = default;
+		dialog_base(const dialog_base&) = delete;
+		dialog_base(dialog_base&&) = delete;
 		virtual ~dialog_base() {
 			if (hwnd != nullptr) ::DestroyWindow(hwnd);
 		}

@@ -122,11 +122,11 @@ inline constinit struct Settings {
 			.num_steps = 1,
 			.pivot = WheelZoom::center,
 		};
-		int8_t min_scale_level = min_scale_level_min,
-			max_scale_level = max_scale_level_max;
+		int8_t min_zoom_level = min_zoom_level_min,
+			max_zoom_level = max_zoom_level_max;
 
-		constexpr static int8_t min_scale_level_min = -13, min_scale_level_max = 20;
-		constexpr static int8_t max_scale_level_min = -13, max_scale_level_max = 20;
+		constexpr static int8_t min_zoom_level_min = -13, min_zoom_level_max = 20;
+		constexpr static int8_t max_zoom_level_min = -13, max_zoom_level_max = 20;
 	} zoom;
 
 	struct ColorScheme {
@@ -179,18 +179,18 @@ inline constinit struct Settings {
 	} toast{};
 
 	struct Grid {
-		int8_t least_scale_thin = 8;
-		int8_t least_scale_thick = 12;
+		int8_t least_zoom_thin = 8;
+		int8_t least_zoom_thick = 12;
 		constexpr static int8_t
-			least_scale_thin_min	= 6, // x 3.00
-			least_scale_thin_max	= ZoomBehavior::max_scale_level_max + 1,
-			least_scale_thick_min	= least_scale_thin_min,
-			least_scale_thick_max	= least_scale_thin_max;
+			least_zoom_thin_min	= 6, // x 3.00
+			least_zoom_thin_max	= ZoomBehavior::max_zoom_level_max + 1,
+			least_zoom_thick_min	= least_zoom_thin_min,
+			least_zoom_thick_max	= least_zoom_thin_max;
 
 		// 0: no grid, 1: thin grid, 2: thick grid.
-		uint8_t grid_thick(int scale_level) const {
-			if (scale_level < least_scale_thin) return 0;
-			if (scale_level < least_scale_thick) return 1;
+		uint8_t grid_thick(int zoom_level) const {
+			if (zoom_level < least_zoom_thin) return 0;
+			if (zoom_level < least_zoom_thick) return 1;
 			return 2;
 		}
 	} grid;
@@ -198,13 +198,13 @@ inline constinit struct Settings {
 	struct ClickActions {
 		enum Command : uint8_t {
 			none = 0,
-			swap_scale_level		= 1,
+			swap_zoom_level		= 1,
 			copy_color_code			= 2,
 			toggle_follow_cursor	= 3,
 			centralize				= 4,
 			toggle_grid				= 5,
-			scale_step_down			= 6,
-			scale_step_up			= 7,
+			zoom_step_down			= 6,
+			zoom_step_up			= 7,
 			settings				= 201,
 			context_menu			= 202,
 			// TODO: add the following new commands.
@@ -214,18 +214,18 @@ inline constinit struct Settings {
 		};
 		struct Button {
 			Command click, dblclk;
-		}	left{ none, swap_scale_level },
+		}	left{ none, swap_zoom_level },
 			right{ context_menu, copy_color_code },
 			middle{ toggle_follow_cursor, none },
 			x1{ none, none },
 			x2{ none,none };
 
-		WheelZoom::Pivot swap_scale_level_pivot = WheelZoom::cursor;
-		WheelZoom::Pivot scale_step_pivot = WheelZoom::cursor;
-		uint8_t scale_step_num_steps = 1;
+		WheelZoom::Pivot swap_zoom_level_pivot = WheelZoom::cursor;
+		WheelZoom::Pivot zoom_step_pivot = WheelZoom::cursor;
+		uint8_t zoom_step_num_steps = 1;
 		constexpr static uint8_t
-			scale_step_num_steps_min = WheelZoom::num_steps_min,
-			scale_step_num_steps_max = WheelZoom::num_steps_max;
+			zoom_step_num_steps_min = WheelZoom::num_steps_min,
+			zoom_step_num_steps_max = WheelZoom::num_steps_max;
 	} commands;
 
 	// loading from .ini file.
@@ -275,8 +275,8 @@ inline constinit struct Settings {
 		load_bool(zoom, wheel.enabled);
 		load_bool(zoom, wheel.reversed);
 		load_enum(zoom, wheel.pivot);
-		load_int(zoom, min_scale_level);
-		load_int(zoom, max_scale_level);
+		load_int(zoom, min_zoom_level);
+		load_int(zoom, max_zoom_level);
 
 		load_color(color, chrome);
 		load_color(color, back_top);
@@ -304,8 +304,8 @@ inline constinit struct Settings {
 				::MultiByteToWideChar(CP_UTF8, 0, buf_ansi, -1, toast.font_name, std::size(toast.font_name));
 		}
 
-		load_int(grid, least_scale_thin);
-		load_int(grid, least_scale_thick);
+		load_int(grid, least_zoom_thin);
+		load_int(grid, least_zoom_thick);
 
 		load_enum(commands, left.click);
 		load_enum(commands, left.dblclk);
@@ -318,9 +318,9 @@ inline constinit struct Settings {
 		load_enum(commands, x2.click);
 		load_enum(commands, x2.dblclk);
 
-		load_enum(commands, swap_scale_level_pivot);
-		load_enum(commands, scale_step_pivot);
-		load_int(commands, scale_step_num_steps);
+		load_enum(commands, swap_zoom_level_pivot);
+		load_enum(commands, zoom_step_pivot);
+		load_int(commands, zoom_step_num_steps);
 
 #undef load_drag
 #undef load_color
@@ -373,8 +373,8 @@ inline constinit struct Settings {
 		save_bool(zoom, wheel.enabled);
 		save_bool(zoom, wheel.reversed);
 		save_dec(zoom, wheel.pivot);
-		save_dec(zoom, min_scale_level);
-		save_dec(zoom, max_scale_level);
+		save_dec(zoom, min_zoom_level);
+		save_dec(zoom, max_zoom_level);
 
 		//save_color(color, chrome);
 		//save_color(color, back_top);
@@ -402,8 +402,8 @@ inline constinit struct Settings {
 		//	::WriteProfileStringA("toast", "font_name", buf_ansi);
 		//}
 
-		save_dec(grid, least_scale_thin);
-		save_dec(grid, least_scale_thick);
+		save_dec(grid, least_zoom_thin);
+		save_dec(grid, least_zoom_thick);
 
 		save_dec(commands, left.click);
 		save_dec(commands, left.dblclk);
@@ -416,9 +416,9 @@ inline constinit struct Settings {
 		save_dec(commands, x2.click);
 		save_dec(commands, x2.dblclk);
 
-		save_dec(commands, swap_scale_level_pivot);
-		save_dec(commands, scale_step_pivot);
-		save_dec(commands, scale_step_num_steps);
+		save_dec(commands, swap_zoom_level_pivot);
+		save_dec(commands, zoom_step_pivot);
+		save_dec(commands, zoom_step_num_steps);
 
 		// lines commented out are setting items that threre're no means to change at runtime.
 
@@ -429,6 +429,6 @@ inline constinit struct Settings {
 	}
 
 	struct HelperFunctions {
-		static std::tuple<int, int> ZoomScaleFromLevel(int scale_level);
+		static std::tuple<int, int> ScaleFromZoomLevel(int zoom_level);
 	};
 } settings;

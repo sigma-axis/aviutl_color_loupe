@@ -50,7 +50,7 @@
 #define IDC_SLIDER2                     1025
 #define IDM_CXT_FOLLOW_CURSOR           40001
 #define IDM_CXT_SHOW_GRID               40002
-#define IDM_CXT_SWAP_SCALE              40003
+#define IDM_CXT_SWAP_ZOOM               40003
 #define IDM_CXT_CENTRALIZE              40004
 #define IDM_CXT_PT_COPY_COLOR           40005
 #define IDM_CXT_PT_MOVE_CENTER          40006

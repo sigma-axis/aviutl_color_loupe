@@ -56,8 +56,8 @@ static inline constinit struct LoupeState {
 
 	// zoom --- manages the scaling ratio of zooming.
 	struct Zoom {
-		int scale_level, second_level;
-		constexpr static int scale_level_min = -13, scale_level_max = 20;
+		int zoom_level, second_level;
+		constexpr static int zoom_level_min = -13, zoom_level_max = 20;
 
 	private:
 		constexpr static int scale_denominator = 4;
@@ -73,22 +73,22 @@ static inline constinit struct LoupeState {
 				((s = upscale(scale_level)), std::make_pair(s, 1 / s)) :
 				((s=downscale(scale_level)), std::make_pair(1 / s, s));
 		}
-		static constexpr auto scale_ratio_Q(int scale_level)
+		static constexpr auto scale_ratio_Q(int zoom_level)
 		{
 			int n = scale_denominator, d = scale_denominator;
-			if (scale_level < 0) d = scale_base(-scale_level);
-			else n = scale_base(scale_level);
+			if (zoom_level < 0) d = scale_base(-zoom_level);
+			else n = scale_base(zoom_level);
 			// as of either the numerator or the denominator is a power of 2, so is the GCD.
 			auto gcd = n | d; gcd &= -gcd; // = std::gcd(n, d);
 			return std::make_pair(n / gcd, d / gcd);
 		}
-		static constexpr double upscale(int scale_level) { return (1.0 / scale_denominator) * scale_base(scale_level); }
-		static constexpr double downscale(int scale_level) { return upscale(-scale_level); }
+		static constexpr double upscale(int zoom_level) { return (1.0 / scale_denominator) * scale_base(zoom_level); }
+		static constexpr double downscale(int zoom_level) { return upscale(-zoom_level); }
 
-		constexpr double scale_ratio() const { return scale_ratio(scale_level); }
-		constexpr double scale_ratio_inv() const { return scale_ratio_inv(scale_level); }
-		constexpr auto scale_ratios() const { return scale_ratios(scale_level); }
-		constexpr auto scale_ratio_Q() const { return scale_ratio_Q(scale_level); }
+		constexpr double scale_ratio() const { return scale_ratio(zoom_level); }
+		constexpr double scale_ratio_inv() const { return scale_ratio_inv(zoom_level); }
+		constexpr auto scale_ratios() const { return scale_ratios(zoom_level); }
+		constexpr auto scale_ratio_Q() const { return scale_ratio_Q(zoom_level); }
 	} zoom{ 8, 0 };
 
 	// tip --- tooltip-like info.
@@ -172,7 +172,7 @@ static inline constinit struct LoupeState {
 	// change the scale keeping the specified position unchanged.
 	void apply_zoom(int new_level, double win_ox, double win_oy, int pic_w, int pic_h) {
 		auto s = zoom.scale_ratio_inv();
-		zoom.scale_level = std::clamp(new_level, Zoom::scale_level_min, Zoom::scale_level_max);
+		zoom.zoom_level = std::clamp(new_level, Zoom::zoom_level_min, Zoom::zoom_level_max);
 		s -= zoom.scale_ratio_inv();
 
 		position.x += s * win_ox; position.y += s * win_oy;
@@ -187,12 +187,12 @@ static inline constinit struct LoupeState {
 		tip = { .x = w2, .y = h2, .visible_level = 0 };
 	}
 } loupe_state;
-static_assert(LoupeState::Zoom::scale_level_max == Settings::ZoomBehavior::max_scale_level_max);
-static_assert(LoupeState::Zoom::scale_level_min == Settings::ZoomBehavior::min_scale_level_min);
+static_assert(LoupeState::Zoom::zoom_level_max == Settings::ZoomBehavior::max_zoom_level_max);
+static_assert(LoupeState::Zoom::zoom_level_min == Settings::ZoomBehavior::min_zoom_level_min);
 
 // define a function to export.
-std::tuple<int, int> Settings::HelperFunctions::ZoomScaleFromLevel(int scale_level) {
-	return decltype(loupe_state.zoom)::scale_ratio_Q(scale_level);
+std::tuple<int, int> Settings::HelperFunctions::ScaleFromZoomLevel(int zoom_level) {
+	return decltype(loupe_state.zoom)::scale_ratio_Q(zoom_level);
 }
 
 
@@ -215,12 +215,12 @@ static inline void load_settings()
 	settings.load(path);
 
 	// additionally load the following loupe states.
-	loupe_state.zoom.scale_level = std::clamp(
-		static_cast<int>(::GetPrivateProfileIntA("state", "scale_level", loupe_state.zoom.scale_level, path)),
-		LoupeState::Zoom::scale_level_min, LoupeState::Zoom::scale_level_max);
+	loupe_state.zoom.zoom_level = std::clamp(
+		static_cast<int>(::GetPrivateProfileIntA("state", "zoom_level", loupe_state.zoom.zoom_level, path)),
+		LoupeState::Zoom::zoom_level_min, LoupeState::Zoom::zoom_level_max);
 	loupe_state.zoom.second_level = std::clamp(
-		static_cast<int>(::GetPrivateProfileIntA("state", "second_scale", loupe_state.zoom.second_level, path)),
-		LoupeState::Zoom::scale_level_min, LoupeState::Zoom::scale_level_max);
+		static_cast<int>(::GetPrivateProfileIntA("state", "zoom_second", loupe_state.zoom.second_level, path)),
+		LoupeState::Zoom::zoom_level_min, LoupeState::Zoom::zoom_level_max);
 	loupe_state.position.follow_cursor = ::GetPrivateProfileIntA("state", "follow_cursor",
 		loupe_state.position.follow_cursor ? 1 : 0, path) != 0;
 	loupe_state.grid.visible = ::GetPrivateProfileIntA("state", "show_grid",
@@ -235,10 +235,10 @@ static inline void save_settings()
 
 	// additionally save the following loupe states.
 	char buf[std::size("+4294967296")];
-	std::snprintf(buf, std::size(buf), "%d", loupe_state.zoom.scale_level);
-	::WritePrivateProfileStringA("state", "scale_level", buf, path);
+	std::snprintf(buf, std::size(buf), "%d", loupe_state.zoom.zoom_level);
+	::WritePrivateProfileStringA("state", "zoom_level", buf, path);
 	std::snprintf(buf, std::size(buf), "%d", loupe_state.zoom.second_level);
-	::WritePrivateProfileStringA("state", "second_scale", buf, path);
+	::WritePrivateProfileStringA("state", "zoom_second", buf, path);
 	::WritePrivateProfileStringA("state", "follow_cursor",
 		loupe_state.position.follow_cursor ? "1" : "0", path);
 	::WritePrivateProfileStringA("state", "show_grid",
@@ -729,7 +729,7 @@ static inline void draw(HWND hwnd)
 		vp.top > 0 || vp.bottom < ht;
 
 	uint8_t grid_thick = loupe_state.grid.visible ?
-		settings.grid.grid_thick(loupe_state.zoom.scale_level) : 0;
+		settings.grid.grid_thick(loupe_state.zoom.zoom_level) : 0;
 
 	// whether the tip is visible.
 	constexpr auto& tip = loupe_state.tip;
@@ -825,7 +825,7 @@ protected:
 
 		revert_x = curr_x = pos.x;
 		revert_y = curr_y = pos.y;
-		revert_zoom = loupe_state.zoom.scale_level;
+		revert_zoom = loupe_state.zoom.zoom_level;
 		::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_HAND)));
 		return true;
 	}
@@ -853,7 +853,7 @@ protected:
 	void Cancel_core(context& cxt) override
 	{
 		pos.x = revert_x; pos.y = revert_y;
-		loupe_state.zoom.scale_level = revert_zoom;
+		loupe_state.zoom.zoom_level = revert_zoom;
 		cxt.redraw_loupe = true;
 	}
 
@@ -1129,16 +1129,16 @@ static inline bool toggle_grid()
 }
 static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 {
-	// ignore if the scale level is identical.
+	// ignore if the zoom level is identical.
 	new_level = std::clamp(new_level,
-		std::max<int>(settings.zoom.min_scale_level, LoupeState::Zoom::scale_level_min),
-		std::min<int>(settings.zoom.max_scale_level, LoupeState::Zoom::scale_level_max));
-	if (new_level == loupe_state.zoom.scale_level) return false;
+		std::max<int>(settings.zoom.min_zoom_level, LoupeState::Zoom::zoom_level_min),
+		std::min<int>(settings.zoom.max_zoom_level, LoupeState::Zoom::zoom_level_max));
+	if (new_level == loupe_state.zoom.zoom_level) return false;
 
 	// apply.
 	if (image.is_valid())
 		loupe_state.apply_zoom(new_level, win_ox, win_oy, image.width(), image.height());
-	else loupe_state.zoom.scale_level = new_level;
+	else loupe_state.zoom.zoom_level = new_level;
 
 	// toast message.
 	if (!settings.toast.notify_scale) return true;
@@ -1162,9 +1162,9 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 	toast_manager.set_message(settings.toast.duration, IDS_TOAST_SCALE_FORMAT, scale);
 	return true;
 }
-static inline bool swap_scale_level(double win_ox, double win_oy, Settings::WheelZoom::Pivot pivot)
+static inline bool swap_zoom_level(double win_ox, double win_oy, Settings::WheelZoom::Pivot pivot)
 {
-	auto level = loupe_state.zoom.scale_level;
+	auto level = loupe_state.zoom.zoom_level;
 	std::swap(level, loupe_state.zoom.second_level);
 
 	if (pivot == Settings::WheelZoom::center) win_ox = win_oy = 0;
@@ -1262,8 +1262,8 @@ static inline bool open_settings(HWND hwnd)
 		// hide the tip as settings for the tip might have changed.
 		loupe_state.tip.visible_level = 0;
 
-		// re-apply the scale level, as its valid range might have changed.
-		apply_zoom(loupe_state.zoom.scale_level, 0, 0);
+		// re-apply the zoom level, as its valid range might have changed.
+		apply_zoom(loupe_state.zoom.zoom_level, 0, 0);
 
 		// no need to discard font handles for new font settings,
 		// as there's no option at this point yet.
@@ -1292,7 +1292,7 @@ struct Menu {
 		ena(IDM_CXT_PT_MOVE_CENTER,			by_mouse && image.is_valid());
 		chk(IDM_CXT_FOLLOW_CURSOR,			loupe_state.position.follow_cursor);
 		chk(IDM_CXT_SHOW_GRID,				loupe_state.grid.visible);
-		ena(IDM_CXT_SWAP_SCALE,				image.is_valid());
+		ena(IDM_CXT_SWAP_ZOOM,				image.is_valid());
 		ena(IDM_CXT_CENTRALIZE,				image.is_valid());
 		chk(IDM_CXT_TIP_MODE_FRAIL,			settings.tip_drag.mode == Settings::TipDrag::frail);
 		chk(IDM_CXT_TIP_MODE_STATIONARY,	settings.tip_drag.mode == Settings::TipDrag::stationary);
@@ -1344,15 +1344,15 @@ struct Menu {
 
 		case IDM_CXT_FOLLOW_CURSOR:	return toggle_follow_cursor();
 		case IDM_CXT_SHOW_GRID:		return toggle_grid();
-		case IDM_CXT_SWAP_SCALE:
+		case IDM_CXT_SWAP_ZOOM:
 		{
 			double x = 0, y = 0;
 			auto pivot = Settings::WheelZoom::center;
 			if (by_mouse) {
 				std::tie(x, y) = rel_win_center();
-				pivot = settings.commands.swap_scale_level_pivot;
+				pivot = settings.commands.swap_zoom_level_pivot;
 			}
-			return swap_scale_level(x, y, pivot) && tip_to_cursor(hwnd);
+			return swap_zoom_level(x, y, pivot) && tip_to_cursor(hwnd);
 		}
 		case IDM_CXT_CENTRALIZE:	return centralize();
 
@@ -1400,10 +1400,10 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 
 	switch (cmd) {
 		using ca = Settings::ClickActions;
-	case ca::swap_scale_level:
+	case ca::swap_zoom_level:
 	{
 		auto [x, y] = rel_win_center();
-		return swap_scale_level(x, y, settings.commands.swap_scale_level_pivot) && tip_to_cursor(hwnd);
+		return swap_zoom_level(x, y, settings.commands.swap_zoom_level_pivot) && tip_to_cursor(hwnd);
 	}
 	case ca::copy_color_code:
 	{
@@ -1413,15 +1413,15 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 	case ca::toggle_follow_cursor:	return toggle_follow_cursor();
 	case ca::centralize:			return centralize();
 	case ca::toggle_grid:			return toggle_grid();
-	case ca::scale_step_down:
-	case ca::scale_step_up:
+	case ca::zoom_step_down:
+	case ca::zoom_step_up:
 	{
-		auto steps = settings.commands.scale_step_num_steps;
-		if (cmd == ca::scale_step_down) steps = -steps;
+		auto steps = settings.commands.zoom_step_num_steps;
+		if (cmd == ca::zoom_step_down) steps = -steps;
 		double x = 0, y = 0;
-		if (settings.commands.scale_step_pivot != Settings::WheelZoom::center)
+		if (settings.commands.zoom_step_pivot != Settings::WheelZoom::center)
 			std::tie(x, y) = rel_win_center();
-		return apply_zoom(loupe_state.zoom.scale_level + steps, x, y);
+		return apply_zoom(loupe_state.zoom.zoom_level + steps, x, y);
 	}
 
 	case ca::settings:		return open_settings(hwnd);
@@ -1622,7 +1622,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			}
 
 			// then apply the zoom.
-			cxt.redraw_loupe |= apply_zoom(loupe_state.zoom.scale_level + delta, ox, oy) && tip_to_cursor(hwnd);
+			cxt.redraw_loupe |= apply_zoom(loupe_state.zoom.zoom_level + delta, ox, oy) && tip_to_cursor(hwnd);
 		}
 		break;
 
@@ -1712,7 +1712,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha5"
+#define PLUGIN_VERSION	"v2.00-alpha6"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
