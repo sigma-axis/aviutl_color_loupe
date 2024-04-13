@@ -126,13 +126,13 @@ protected:
 			Command data;
 		} combo_data[] = {
 			{ L"(何もしない)",		Command::none					},
-			{ L"拡大率切り替え",		Command::swap_zoom_level		},
+			{ L"ズーム切り替え",		Command::swap_zoom_level		},
 			{ L"カラーコードをコピー",	Command::copy_color_code		},
 			{ L"カーソル追従切り替え",	Command::toggle_follow_cursor	},
 			{ L"編集画面の中央へ移動",	Command::centralize				},
-			{ L"グリッド表示切替",	Command::toggle_grid			},
-			{ L"拡大率を上げる",		Command::zoom_step_up			},
-			{ L"拡大率を下げる",		Command::zoom_step_down			},
+			{ L"グリッド表示切り替え",	Command::toggle_grid			},
+			{ L"ズームアップ",		Command::zoom_step_up			},
+			{ L"ズームダウン",		Command::zoom_step_down			},
 			{ L"メニューを表示",		Command::context_menu			},
 			{ L"このウィンドウを表示",	Command::settings				},
 		};
