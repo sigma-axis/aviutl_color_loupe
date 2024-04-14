@@ -377,14 +377,50 @@ static inline constinit class ToastManager {
 	bool active = false;
 	constexpr static auto& toast = loupe_state.toast;
 
-public:
 	auto timer_id() const { return reinterpret_cast<uintptr_t>(this); }
-	bool is_active() const { return active; }
+	static void CALLBACK timer_proc(HWND hwnd, auto, uintptr_t id, auto)
+	{
+		// turn the timer off.
+		::KillTimer(hwnd, id);
 
-	HWND destination() const { return hwnd; }
+		auto* that = reinterpret_cast<ToastManager*>(id);
+		if (that == nullptr || !that->active || that->hwnd != hwnd) return; // might be a wrong call.
+
+		// update the variable associated to the timer.
+		that->active = false;
+
+		// remove the toast.
+		that->erase_core();
+	}
+	// hwnd must not be nullptr.
+	void set_timer(int time_ms) {
+		if (time_ms < USER_TIMER_MINIMUM) time_ms = USER_TIMER_MINIMUM;
+
+		active = true;
+		::SetTimer(hwnd, timer_id(), time_ms, timer_proc);
+		// WM_TIMER won't be posted to the window procedure.
+	}
+	void kill_timer() {
+		if (active && hwnd != nullptr) {
+			::KillTimer(hwnd, timer_id());
+			active = false;
+		}
+	}
+
+	void erase_core() {
+		if (toast.visible) {
+			toast.visible = false;
+			if (hwnd != nullptr) ::InvalidateRect(hwnd, nullptr, FALSE);
+		}
+	}
+
+public:
+	bool is_active() const { return active; }
+	HWND host_window() const { return hwnd; }
+
 	// set nullptr when exitting.
-	void set_destination(HWND hwnd) {
-		on_timer();
+	void set_host(HWND hwnd) {
+		erase();
 		this->hwnd = hwnd;
 	}
 
@@ -399,19 +435,17 @@ public:
 			std::swprintf(toast.message, std::size(toast.message), reinterpret_cast<wchar_t*>(ptr), args...);
 		}
 		else ::LoadStringW(this_dll, id, toast.message, std::size(toast.message));
-
-		active = true;
-		::SetTimer(hwnd, timer_id(), time_ms, nullptr);
 		toast.visible = true;
+
+		// turn a timer on.
+		set_timer(time_ms);
 	}
-	// you can also use this function to reset the toast state.
-	void on_timer()
+
+	// removes the toast message.
+	void erase()
 	{
-		if (active && hwnd != nullptr) {
-			active = false;
-			::KillTimer(hwnd, timer_id());
-		}
-		toast.visible = false;
+		kill_timer(); // turn a timer off if exists.
+		erase_core(); // remove the toast.
 	}
 } toast_manager;
 
@@ -437,7 +471,7 @@ public:
 		tip_font.free();
 		toast_font.free();
 		cxt_menu.free();
-		toast_manager.on_timer();
+		toast_manager.erase();
 	}
 } ext_obj;
 
@@ -727,7 +761,7 @@ static inline void draw_blank(HWND hwnd)
 	RECT rc; ::GetClientRect(hwnd, &rc);
 	HDC window_hdc = ::GetDC(hwnd);
 
-	if (loupe_state.toast.visible && ext_obj.is_active()) {
+	if (ext_obj.is_active() && loupe_state.toast.visible) {
 		// needs to draw a toast. prepare a back buffer.
 		HDC hdc = ::CreateCompatibleDC(window_hdc);
 		auto tmp_bmp = ::SelectObject(hdc, ::CreateCompatibleBitmap(window_hdc, rc.right, rc.bottom));
@@ -1304,7 +1338,7 @@ static inline bool open_settings(HWND hwnd)
 {
 	if (dialogs::open_settings(hwnd)) {
 		// hide the toast as its duration/visibility might have changed.
-		toast_manager.on_timer();
+		toast_manager.erase();
 
 		// hide the tip as settings for the tip might have changed.
 		loupe_state.tip.visible_level = 0;
@@ -1511,13 +1545,13 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		// find exedit.
 		exedit_drag.init(fp);
 
-		// register as the timer destination.
-		toast_manager.set_destination(hwnd);
+		// activate the toast manager.
+		toast_manager.set_host(hwnd);
 		break;
 
 	case FilterMessage::Exit:
-		// unregister from the timer destination.
-		toast_manager.set_destination(nullptr);
+		// deactivate the toast manager.
+		toast_manager.set_host(nullptr);
 
 		// make sure new allocation would no longer occur.
 		ext_obj.deactivate();
@@ -1551,14 +1585,6 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 	case WM_PAINT:
 		cxt.redraw_loupe = true;
-		break;
-
-	case WM_TIMER:
-		// update of the toast message to dissapear.
-		if (static_cast<uintptr_t>(wparam) == toast_manager.timer_id()) {
-			toast_manager.on_timer();
-			cxt.redraw_loupe = true;
-		}
 		break;
 
 		// UI handlers for mouse messages.
@@ -1757,7 +1783,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha11"
+#define PLUGIN_VERSION	"v2.00-alpha12"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

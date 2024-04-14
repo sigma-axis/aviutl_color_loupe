@@ -14,7 +14,6 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 #include <cstdint>
 #include <cmath>
-#include <chrono>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -44,12 +43,27 @@ namespace sigma_lib::W32::custom::mouse
 		// until it's released, measured in milli seconds.
 		int16_t timespan;
 
+		constexpr bool is_distance_valid(int dist) const {
+			return cmp_d(dist, distance);
+		}
+		constexpr bool is_distance_valid(int dx, int dy) const {
+			return cmp_d(dx, distance) || cmp_d(dy, distance);
+		}
+		constexpr bool distance_always_invalid() const { return distance == invalid_val; }
+
+		constexpr bool is_timespan_valid(int time) const {
+			return cmp_t(time, timespan);
+		}
+		constexpr bool timespan_always_invalid() const { return timespan == invalid_val; }
+
 		constexpr bool is_valid(int dist, int time) const {
-			return cmp_d(dist, distance) || cmp_t(time, timespan);
+			return is_distance_valid(dist) || is_timespan_valid(time);
 		}
 		constexpr bool is_valid(int dx, int dy, int time) const {
-			return cmp_d(dx, distance) || cmp_d(dy, distance) || cmp_t(time, timespan);
+			return is_distance_valid(dx, dy) || is_timespan_valid(time);
 		}
+		constexpr bool is_always_invalid() const { return distance_always_invalid() && timespan_always_invalid(); }
+
 		consteval static DragInvalidRange AlwaysValid() { return { -1, 0 }; }
 		consteval static DragInvalidRange AlwaysInvalid() { return { invalid_val, invalid_val }; }
 
@@ -71,14 +85,62 @@ namespace sigma_lib::W32::custom::mouse
 	class DragStateBase {
 		inline static constinit DragStateBase* current = nullptr;
 
-		using clock = std::chrono::steady_clock;
-		static inline constinit clock::time_point start_time{};
 		static inline constinit auto invalid_range = DragInvalidRange::AlwaysInvalid();
 		static inline bool was_validated = false;
-		static bool check_is_valid(const POINT& curr) {
-			return invalid_range.is_valid(
-				curr.x - drag_start.x, curr.y - drag_start.y,
-				static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - start_time).count()));
+		static bool is_distance_valid(const POINT& curr) {
+			return invalid_range.is_distance_valid(
+				curr.x - drag_start.x, curr.y - drag_start.y);
+		}
+
+		static auto timer_id() { return reinterpret_cast<uintptr_t>(&current); }
+		static inline bool timer_active = false;
+		static void CALLBACK timer_proc(HWND hwnd, auto, uintptr_t id, auto)
+		{
+			// turn the timer off.
+			::KillTimer(hwnd, id);
+
+			if (id != timer_id() || !timer_active) return; // might be a wrong call.
+			timer_active = false; // update the variable associated to the timer.
+
+			if (hwnd != DragStateBase::hwnd || hwnd == nullptr ||
+				current == nullptr) return; // wrong states. ignore.
+
+			// prepare and send a "fake" message so the dragging will turn to "validated" state.
+			constexpr auto make_lparam = [] {
+				POINT pt;
+				::GetCursorPos(&pt); ::ScreenToClient(DragStateBase::hwnd, &pt);
+				return static_cast<LPARAM>((0xffff & pt.x) | (pt.y << 16));
+			};
+			constexpr auto make_wparam = [] {
+				int8_t ks[256];
+				::GetKeyboardState(reinterpret_cast<uint8_t*>(ks));
+				WPARAM ret = 0;
+				if (ks[VK_LBUTTON]	< 0) ret |= MK_LBUTTON;
+				if (ks[VK_RBUTTON]	< 0) ret |= MK_RBUTTON;
+				if (ks[VK_MBUTTON]	< 0) ret |= MK_MBUTTON;
+				if (ks[VK_XBUTTON1]	< 0) ret |= MK_XBUTTON1;
+				if (ks[VK_XBUTTON2]	< 0) ret |= MK_XBUTTON2;
+				if (ks[VK_CONTROL]	< 0) ret |= MK_CONTROL;
+				if (ks[VK_SHIFT]	< 0) ret |= MK_SHIFT;
+				return ret;
+			};
+			// make sure to be recognized as "valid".
+			invalid_range = DragInvalidRange::AlwaysValid();
+			::SendMessageW(hwnd, WM_MOUSEMOVE, make_wparam(), make_lparam());
+		}
+		// hwnd must not be nullptr.
+		static void set_timer(int time_ms) {
+			if (time_ms < USER_TIMER_MINIMUM) time_ms = USER_TIMER_MINIMUM;
+
+			timer_active = true;
+			::SetTimer(hwnd, timer_id(), time_ms, timer_proc);
+			// WM_TIMER won't be posted to the window procedure.
+		}
+		static void kill_timer() {
+			if (timer_active && hwnd != nullptr) {
+				::KillTimer(hwnd, timer_id());
+				timer_active = false;
+			}
 		}
 
 	public:
@@ -90,7 +152,7 @@ namespace sigma_lib::W32::custom::mouse
 
 		// should return true if ready to initiate the drag.
 		virtual bool Ready_core(context& cxt) = 0;
-		virtual void Unready_core(context& cxt) {}
+		virtual void Unready_core(context& cxt, bool was_valid) {}
 
 		virtual void Start_core(context& cxt) {};
 		virtual void Delta_core(const POINT& curr, context& cxt) {}
@@ -142,7 +204,6 @@ namespace sigma_lib::W32::custom::mouse
 			DragStateBase::drag_start = last_point = drag_start;
 
 			if (Ready_core(cxt)) {
-				start_time = clock::now();
 				invalid_range = InvalidRange();
 				was_validated = false;
 
@@ -154,6 +215,8 @@ namespace sigma_lib::W32::custom::mouse
 					was_validated = true;
 					current->Start_core(cxt);
 				}
+				else if (!invalid_range.timespan_always_invalid())
+					set_timer(invalid_range.timespan);
 				return true;
 			}
 			else {
@@ -166,6 +229,7 @@ namespace sigma_lib::W32::custom::mouse
 			if (was_validated || !is_dragging(cxt)) return;
 
 			was_validated = true;
+			kill_timer();
 			current->Start_core(cxt);
 		}
 		// returns true if the dragging operation has been properly processed.
@@ -174,8 +238,9 @@ namespace sigma_lib::W32::custom::mouse
 			if (!is_dragging(cxt)) return false;
 
 			// ignore the input until it exceeds a certain range.
-			if (!was_validated && check_is_valid(curr)) {
+			if (!was_validated && is_distance_valid(curr)) {
 				was_validated = true;
+				kill_timer();
 				current->Start_core(cxt);
 			}
 			if (was_validated) {
@@ -189,8 +254,9 @@ namespace sigma_lib::W32::custom::mouse
 		{
 			if (!is_dragging(cxt)) return false;
 
+			kill_timer();
 			if (was_validated) current->Cancel_core(cxt);
-			current->Unready_core(cxt);
+			current->Unready_core(cxt, was_validated);
 
 			hwnd = nullptr;
 			current = nullptr;
@@ -203,11 +269,9 @@ namespace sigma_lib::W32::custom::mouse
 		{
 			if (!is_dragging(cxt)) return true; // dragging must have been canceled.
 
+			kill_timer();
 			if (was_validated) current->End_core(cxt);
-			else if (check_is_valid(drag_start))
-				// the mouse stayed so long it can't be recognized as a click.
-				was_validated = true;
-			current->Unready_core(cxt);
+			current->Unready_core(cxt, was_validated);
 
 			hwnd = nullptr;
 			current = nullptr;
@@ -220,8 +284,9 @@ namespace sigma_lib::W32::custom::mouse
 		{
 			if (current == nullptr) return false;
 
+			kill_timer();
 			if (was_validated) current->Abort_core(cxt);
-			current->Unready_core(cxt);
+			current->Unready_core(cxt, was_validated);
 
 			auto tmp = hwnd;
 			hwnd = nullptr;
@@ -254,7 +319,7 @@ namespace sigma_lib::W32::custom::mouse
 		using context = DragBase::context;
 	protected:
 		bool Ready_core(context& cxt) override { return true; }
-		void Unready_core(context& cxt) override {}
+		void Unready_core(context& cxt, bool was_valid) override {}
 
 		void Start_core(context& cxt) override {}
 		void Delta_core(const POINT& curr, context& cxt) override {}
