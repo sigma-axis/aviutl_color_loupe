@@ -879,7 +879,7 @@ public:
 	}
 };
 
-static inline constinit class : public DragState {
+static inline constinit class LoupeDrag : public DragState {
 	double revert_x{}, revert_y{}, curr_x{}, curr_y{};
 	int revert_zoom{};
 	constexpr static auto& pos = loupe_state.position;
@@ -928,42 +928,48 @@ protected:
 	Settings::WheelZoom WheelZoom() override { return settings.loupe_drag.wheel; }
 } loupe_drag;
 
-static inline constinit class : public DragState {
+static inline constinit class TipDrag : public DragState {
 	constexpr static auto& tip = loupe_state.tip;
 	POINT init{};
+	LoupeState::Tip revert{};
 
 protected:
 	bool Ready_core(context& cxt) override
 	{
 		if (!image.is_valid()) return false;
 
-		::SetCursor(nullptr);
-		return true;
-	}
-	void Start_core(context& cxt) override
-	{
+		revert = tip;
+
+		bool hide_cursor = true;
 		switch (settings.tip_drag.mode) {
 			using enum Settings::TipDrag::Mode;
 		case frail:
 			tip.visible_level = 2;
-			cxt.redraw_loupe = true;
 			break;
 		case stationary:
 		case sticky:
 		default:
-			cxt.redraw_loupe = true;
 			if (tip.is_visible()) {
-				// hide the tip and rewind the cursor.
 				tip.visible_level = 0;
-				::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_ARROW)));
-				return;
+				hide_cursor = false;
 			}
-			tip.visible_level = 2;
+			else tip.visible_level = 2;
 			break;
 		}
 
 		init = win2pic_i(drag_start);
 		tip.x = init.x; tip.y = init.y;
+
+		cxt.redraw_loupe = true;
+		if (hide_cursor) ::SetCursor(nullptr);
+
+		return true;
+	}
+	void Unready_core(context& cxt, bool was_valid) override
+	{
+		if (was_valid) return;
+		tip = revert;
+		cxt.redraw_loupe = true;
 	}
 	void Delta_core(const POINT& curr, context& cxt) override
 	{
@@ -1002,7 +1008,7 @@ protected:
 	Settings::WheelZoom WheelZoom() override { return settings.tip_drag.wheel; }
 } tip_drag;
 
-static inline constinit class : public DragState {
+static inline constinit class ExEditDrag : public DragState {
 	POINT revert{}, last{};
 
 	using FilterMessage = FilterPlugin::WindowMessage;
@@ -1463,9 +1469,9 @@ static inline void on_update(int w, int h, void* source)
 		// notify the loupe of resizing.
 		loupe_state.on_resize(w, h);
 }
-static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, const POINT& pt)
+static inline void on_command(bool& redraw_loupe, HWND hwnd, Settings::ClickActions::Command cmd, const POINT& pt)
 {
-	if (!ext_obj.is_active()) return false;
+	if (!ext_obj.is_active()) return;
 
 	auto rel_win_center = [&] {
 		RECT rc; ::GetClientRect(hwnd, &rc);
@@ -1477,16 +1483,18 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 	case ca::swap_zoom_level:
 	{
 		auto [x, y] = rel_win_center();
-		return swap_zoom_level(x, y, settings.commands.swap_zoom_level_pivot) && tip_to_cursor(hwnd);
+		redraw_loupe |= swap_zoom_level(x, y, settings.commands.swap_zoom_level_pivot) && tip_to_cursor(hwnd);
+		break;
 	}
 	case ca::copy_color_code:
 	{
 		auto [x, y] = rel_win_center();
-		return copy_color_code(x, y);
+		redraw_loupe |= copy_color_code(x, y);
+		break;
 	}
-	case ca::toggle_follow_cursor:	return toggle_follow_cursor();
-	case ca::centralize:			return centralize();
-	case ca::toggle_grid:			return toggle_grid();
+	case ca::toggle_follow_cursor:	redraw_loupe |= toggle_follow_cursor();	break;
+	case ca::centralize:			redraw_loupe |= centralize();			break;
+	case ca::toggle_grid:			redraw_loupe |= toggle_grid();			break;
 	case ca::zoom_step_down:
 	case ca::zoom_step_up:
 	{
@@ -1495,19 +1503,24 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 		double x = 0, y = 0;
 		if (settings.commands.step_zoom_pivot != Settings::WheelZoom::center)
 			std::tie(x, y) = rel_win_center();
-		return apply_zoom(loupe_state.zoom.zoom_level + steps, x, y);
+		redraw_loupe |= apply_zoom(loupe_state.zoom.zoom_level + steps, x, y);
+		break;
 	}
 	case ca::copy_coord:
 	{
 		auto [x, y] = rel_win_center();
-		return copy_coordinate(x, y);
+		redraw_loupe |= copy_coordinate(x, y);
+		break;
 	}
 
-	case ca::settings:		return open_settings(hwnd);
-	case ca::context_menu:	return Menu::popup_menu(hwnd, true);
-
-	case ca::none:
-	default: return false;
+	case ca::settings:
+		redraw_loupe |= open_settings(hwnd);
+		break;
+	case ca::context_menu:
+		// should redraw the window before the context menu popups.
+		if (redraw_loupe) ::InvalidateRect(hwnd, nullptr, FALSE);
+		redraw_loupe = Menu::popup_menu(hwnd, true);
+		break;
 	}
 }
 
@@ -1622,7 +1635,7 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			}();
 
 			// handle that command.
-			cxt.redraw_loupe |= on_command(hwnd, btn.click, cursor_pos(lparam));
+			on_command(cxt.redraw_loupe, hwnd, btn.click, cursor_pos(lparam));
 		}
 		break;
 	case WM_CAPTURECHANGED:
@@ -1699,16 +1712,16 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 
 	// option commands.
 	case WM_LBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, settings.commands.left.dblclk, cursor_pos(lparam));
+		on_command(cxt.redraw_loupe, hwnd, settings.commands.left.dblclk, cursor_pos(lparam));
 		break;
 	case WM_RBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, settings.commands.right.dblclk, cursor_pos(lparam));
+		on_command(cxt.redraw_loupe, hwnd, settings.commands.right.dblclk, cursor_pos(lparam));
 		break;
 	case WM_MBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, settings.commands.middle.dblclk, cursor_pos(lparam));
+		on_command(cxt.redraw_loupe, hwnd, settings.commands.middle.dblclk, cursor_pos(lparam));
 		break;
 	case WM_XBUTTONDBLCLK:
-		cxt.redraw_loupe = on_command(hwnd, ((wparam >> 16) == XBUTTON1 ?
+		on_command(cxt.redraw_loupe, hwnd, ((wparam >> 16) == XBUTTON1 ?
 			settings.commands.x1 : settings.commands.x2).dblclk, cursor_pos(lparam));
 		break;
 
@@ -1783,7 +1796,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha12"
+#define PLUGIN_VERSION	"v2.00-alpha13"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
