@@ -112,7 +112,7 @@ inline constinit struct Settings {
 
 	struct ExEditDrag {
 		KeysActivate keys{ MouseButton::left, KeysActivate::on, KeysActivate::dontcare, KeysActivate::dontcare };
-		DragInvalidRange range{ .distance = 2, .timespan = 800 };
+		DragInvalidRange range{ .distance = -1, .timespan = 0 };
 		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
 		enum KeyFake : uint8_t {
