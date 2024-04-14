@@ -92,20 +92,18 @@ namespace sigma_lib::W32::custom::mouse
 				curr.x - drag_start.x, curr.y - drag_start.y);
 		}
 
-		static auto timer_id() { return reinterpret_cast<uintptr_t>(&current); }
-		static inline bool timer_active = false;
+		static inline uintptr_t timer_id = 0;
 		static void CALLBACK timer_proc(HWND hwnd, auto, uintptr_t id, auto)
 		{
 			// turn the timer off.
 			::KillTimer(hwnd, id);
 
-			if (id != timer_id() || !timer_active) return; // might be a wrong call.
-			timer_active = false; // update the variable associated to the timer.
+			if (hwnd != nullptr || id == 0 || id != timer_id) return; // might be a wrong call.
+			timer_id = 0; // the timer is no longer alive.
 
-			if (hwnd != DragStateBase::hwnd || hwnd == nullptr ||
-				current == nullptr) return; // wrong states. ignore.
+			if (DragStateBase::hwnd == nullptr || current == nullptr) return; // wrong states. ignore.
 
-			// prepare and send a "fake" message so the dragging will turn to "validated" state.
+			// prepare and send a "fake" message so the drag will turn into the "validated" state.
 			constexpr auto make_lparam = [] {
 				POINT pt;
 				::GetCursorPos(&pt); ::ScreenToClient(DragStateBase::hwnd, &pt);
@@ -113,7 +111,8 @@ namespace sigma_lib::W32::custom::mouse
 			};
 			constexpr auto make_wparam = [] {
 				int8_t ks[256];
-				::GetKeyboardState(reinterpret_cast<uint8_t*>(ks));
+				// one of the flaws in windows.h.
+				std::ignore = ::GetKeyboardState(reinterpret_cast<uint8_t*>(ks));
 				WPARAM ret = 0;
 				if (ks[VK_LBUTTON]	< 0) ret |= MK_LBUTTON;
 				if (ks[VK_RBUTTON]	< 0) ret |= MK_RBUTTON;
@@ -126,20 +125,16 @@ namespace sigma_lib::W32::custom::mouse
 			};
 			// make sure to be recognized as "valid".
 			invalid_range = DragInvalidRange::AlwaysValid();
-			::SendMessageW(hwnd, WM_MOUSEMOVE, make_wparam(), make_lparam());
+			::SendMessageW(DragStateBase::hwnd, WM_MOUSEMOVE, make_wparam(), make_lparam());
 		}
-		// hwnd must not be nullptr.
 		static void set_timer(int time_ms) {
 			if (time_ms < USER_TIMER_MINIMUM) time_ms = USER_TIMER_MINIMUM;
-
-			timer_active = true;
-			::SetTimer(hwnd, timer_id(), time_ms, timer_proc);
-			// WM_TIMER won't be posted to the window procedure.
+			timer_id = ::SetTimer(nullptr, timer_id, time_ms, timer_proc);
 		}
 		static void kill_timer() {
-			if (timer_active && hwnd != nullptr) {
-				::KillTimer(hwnd, timer_id());
-				timer_active = false;
+			if (timer_id != 0) {
+				::KillTimer(nullptr, timer_id);
+				timer_id = 0;
 			}
 		}
 
