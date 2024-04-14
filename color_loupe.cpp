@@ -1123,6 +1123,8 @@ static inline constinit VoidDrag<DragState> void_drag;
 
 inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context& cxt)
 {
+	if (!ext_obj.is_active()) return;
+
 	constexpr WPARAM btns = MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2;
 	auto btn = [&] {
 		switch (cxt.wparam & btns) {
@@ -1796,7 +1798,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha13"
+#define PLUGIN_VERSION	"v2.00-beta1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

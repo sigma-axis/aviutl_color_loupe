@@ -15,6 +15,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #include <algorithm>
 #include <vector>
 #include <memory>
+#include <ranges>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -146,36 +147,18 @@ namespace dialogs::basics
 	////////////////////////////////
 	class vscroll_form : public dialog_base {
 		int prev_scroll_pos = -1;
-	protected:
-		uintptr_t template_id() const override { return IDD_VSCROLLFORM; }
-
-		bool on_init(HWND) override
-		{
-			for (auto& child : children) {
-				child.inst->create(hwnd);
-				RECT rc;
-				::GetClientRect(child.inst->hwnd, &rc);
-				child.w = rc.right; child.h = rc.bottom;
-				::ShowWindow(child.inst->hwnd, SW_SHOW);
-			}
-
-			// no default control to focus.
-			return false;
-		}
-
 		void on_scroll(int pos, bool force = false) {
-			auto diff = prev_scroll_pos - pos;
+			auto diff = pos - prev_scroll_pos;
 			if (!force && diff == 0) return;
-
 			prev_scroll_pos = pos;
-			for (auto& child : children) {
-				if (!force && diff > 0) {
-					// to prevent wrong drawings.
-					RECT rc{ 0, 0, child.w, diff };
-					::InvalidateRect(child.inst->hwnd, &rc, FALSE);
-				}
-				::MoveWindow(child.inst->hwnd, child.x, child.y - pos, child.w, child.h, TRUE);
-			}
+
+			// update positions of children.
+			// the order is reversed when diff < 0 to prevent broken drawings.
+			auto begin = children.begin(), end = children.end();
+			if (force || diff > 0) diff = +1;
+			else diff = -1, std::swap(--end, --begin);
+			for (auto child = begin; child != end; child += diff)
+				::MoveWindow(child->inst->hwnd, child->x, child->y - pos, child->w, child->h, TRUE);
 		}
 
 		void on_resize(int w, int h)
@@ -200,8 +183,6 @@ namespace dialogs::basics
 
 				tot_w += W;
 				max_h = std::max(max_h, H);
-
-				::InvalidateRect(child.inst->hwnd, nullptr, FALSE);
 			}
 
 			// set the scroll range and redraw.
@@ -209,6 +190,23 @@ namespace dialogs::basics
 			si.nMin = 0; si.nMax = tot_h + max_h;
 			si.nPage = h;
 			on_scroll(::SetScrollInfo(hwnd, SB_VERT, &si, TRUE), true);
+		}
+
+	protected:
+		uintptr_t template_id() const override { return IDD_VSCROLLFORM; }
+
+		bool on_init(HWND) override
+		{
+			for (auto& child : children) {
+				child.inst->create(hwnd);
+				RECT rc;
+				::GetClientRect(child.inst->hwnd, &rc);
+				child.w = rc.right; child.h = rc.bottom;
+				::ShowWindow(child.inst->hwnd, SW_SHOW);
+			}
+
+			// no default control to focus.
+			return false;
 		}
 
 		bool handler(UINT message, WPARAM wparam, LPARAM lparam)

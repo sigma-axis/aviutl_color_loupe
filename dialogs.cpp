@@ -1253,6 +1253,7 @@ class setting_dlg : public dialog_base {
 	};
 	std::map<tab_kind, std::unique_ptr<vscroll_form>> pages{};
 	static inline constinit tab_kind last_selected_tab = tab_kind::drag_move_loupe;
+	static inline constinit SIZE last_closed_size = { -1, -1 };
 
 	SIZE prev_size{};
 
@@ -1377,6 +1378,7 @@ protected:
 			{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
 		};
 
+		// save the last size of this window.
 		{
 			RECT rc; ::GetClientRect(hwnd, &rc);
 			prev_size.cx = rc.right; prev_size.cy = rc.bottom;
@@ -1395,6 +1397,15 @@ protected:
 
 		// set the first focus to the list box.
 		::SetFocus(list);
+
+		// restore the size of the window when it was closed last time.
+		if (last_closed_size.cx > 0 && last_closed_size.cy > 0) {
+			RECT rc;
+			::GetWindowRect(hwnd, &rc);
+			rc.left = (rc.left + rc.right - last_closed_size.cx) / 2;
+			rc.top = (rc.top + rc.bottom - last_closed_size.cy) / 2;
+			::MoveWindow(hwnd, rc.left, rc.top, last_closed_size.cx, last_closed_size.cy, FALSE);
+		}
 
 		// don't set the first focus to the OK button.
 		return false;
@@ -1443,6 +1454,9 @@ protected:
 	void on_close(bool accept)
 	{
 		last_selected_tab = get_list_data<tab_kind>(::GetDlgItem(hwnd, IDC_LIST1));
+		RECT rc;
+		::GetWindowRect(hwnd, &rc);
+		last_closed_size.cx = rc.right - rc.left; last_closed_size.cy = rc.bottom - rc.top;
 		::EndDialog(hwnd, accept ? TRUE : FALSE);
 	}
 
