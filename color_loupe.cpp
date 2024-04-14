@@ -585,11 +585,11 @@ static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
 	switch (settings.tip_drag.color_fmt) {
 		using enum Settings::ColorFormat;
 	case dec3x3:
-		tip_strlen += swprintf_s(tip_str, L"RGB(%3u,%3u,%3u)\n", col.R, col.G, col.B);
+		tip_strlen += std::swprintf(tip_str, std::size(tip_str), L"RGB(%3u,%3u,%3u)\n", col.R, col.G, col.B);
 		break;
 	case hexdec6:
 	default:
-		tip_strlen += swprintf_s(tip_str, L"#%06X\n", col.to_formattable());
+		tip_strlen += std::swprintf(tip_str, std::size(tip_str), L"#%06X\n", col.to_formattable());
 		break;
 	}
 	switch (settings.tip_drag.coord_fmt) {
@@ -602,12 +602,12 @@ static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
 		if (pic_w < 2000) fmt[3]--; // trim by 1 digit, it's rarely necessary.
 		if ((pic_h & 1) == 0) fmt[12] = L'5', fmt[14] = L'0';
 		if (pic_h < 2000) fmt[12]--;
-		tip_strlen += swprintf_s(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, fmt, x, y);
+		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, fmt, x, y);
 		break;
 	}
 	case origin_top_left:
 	default:
-		tip_strlen += swprintf_s(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, L"X:%4d, Y:%4d", pic_x, pic_y);
+		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, L"X:%4d, Y:%4d", pic_x, pic_y);
 		break;
 	}
 
@@ -1227,11 +1227,20 @@ static inline bool copy_color_code(double win_ox, double win_oy)
 	if (!image.is_valid()) return false;
 
 	auto [x, y] = loupe_state.win2pic(win_ox, win_oy);
-	auto color = image.color_at(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y))).to_formattable();
-	if (color > 0xffffff) return false;
+	auto color = image.color_at(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)));
+	if (color.A != 0) return false;
 
-	wchar_t buf[std::size("rrggbb")];
-	std::swprintf(buf, std::size(buf), L"%06x", color);
+	wchar_t buf[std::max(std::size(L"rrggbb"), std::size(L"RGB(255,255,255)"))];
+	switch (settings.commands.copy_color_fmt) {
+		using enum Settings::ColorFormat;
+	case dec3x3:
+		std::swprintf(buf, std::size(buf), L"RGB(%u,%u,%u)", color.R, color.G, color.B);
+		break;
+	case hexdec6:
+	default:
+		std::swprintf(buf, std::size(buf), L"%06x", color.to_formattable());
+		break;
+	}
 	if (!copy_text(buf)) return false;
 
 	// toast message.
@@ -1239,7 +1248,7 @@ static inline bool copy_color_code(double win_ox, double win_oy)
 	toast_manager.set_message(settings.toast.duration, IDS_TOAST_CLIPBOARD, buf);
 	return true;
 }
-static inline bool copy_coordinate(double win_ox, double win_oy, bool from_center)
+static inline bool copy_coordinate(double win_ox, double win_oy)
 {
 	if (!image.is_valid()) return false;
 
@@ -1250,7 +1259,10 @@ static inline bool copy_coordinate(double win_ox, double win_oy, bool from_cente
 	if (!(0 <= img_x && img_x < w && 0 <= img_y && img_y < h)) return false;
 
 	wchar_t buf[std::max(std::size(L"1234,1234"), std::size(L"-1234.5,-1234.5"))];
-	if (from_center) {
+	switch (settings.commands.copy_coord_fmt) {
+		using enum Settings::CoordFormat;
+	case origin_center:
+	{
 		x = img_x - w / 2.0; y = img_y - h / 2.0;
 		if (!(std::abs(x) < 10'000 && std::abs(y) < 10'000)) return false;
 
@@ -1258,10 +1270,13 @@ static inline bool copy_coordinate(double win_ox, double win_oy, bool from_cente
 		if ((w & 1) == 0) fmt[2] = L'0';
 		if ((h & 1) == 0) fmt[7] = L'0';
 		std::swprintf(buf, std::size(buf), fmt, x, y);
+		break;
 	}
-	else {
+	case origin_top_left:
+	default:
 		if (!(img_x < 10'000 && img_y < 10'000)) return false;
 		std::swprintf(buf, std::size(buf), L"%d,%d", img_x, img_y);
+		break;
 	}
 	if (!copy_text(buf)) return false;
 
@@ -1319,8 +1334,7 @@ struct Menu {
 
 		// prepare the context menu.
 		ena(IDM_CXT_PT_COPY_COLOR,			by_mouse && image.is_valid());
-		ena(IDM_CXT_PT_COPY_COORD_TL,		by_mouse && image.is_valid()); // TODO: switch these two by settings. leave only one.
-		ena(IDM_CXT_PT_COPY_COORD_C,		by_mouse && image.is_valid()); // TODO: switch these two by settings. leave only one.
+		ena(IDM_CXT_PT_COPY_COORD,			by_mouse && image.is_valid());
 		ena(IDM_CXT_PT_MOVE_CENTER,			by_mouse && image.is_valid());
 		chk(IDM_CXT_FOLLOW_CURSOR,			loupe_state.position.follow_cursor);
 		chk(IDM_CXT_SHOW_GRID,				loupe_state.grid.visible);
@@ -1355,16 +1369,10 @@ struct Menu {
 				return copy_color_code(x, y);
 			}
 			break;
-		case IDM_CXT_PT_COPY_COORD_TL:
+		case IDM_CXT_PT_COPY_COORD:
 			if (by_mouse) {
 				auto [x, y] = rel_win_center();
-				return copy_coordinate(x, y, false);
-			}
-			break;
-		case IDM_CXT_PT_COPY_COORD_C:
-			if (by_mouse) {
-				auto [x, y] = rel_win_center();
-				return copy_coordinate(x, y, true);
+				return copy_coordinate(x, y);
 			}
 			break;
 		case IDM_CXT_PT_MOVE_CENTER:
@@ -1454,6 +1462,11 @@ static inline bool on_command(HWND hwnd, Settings::ClickActions::Command cmd, co
 		if (settings.commands.step_zoom_pivot != Settings::WheelZoom::center)
 			std::tie(x, y) = rel_win_center();
 		return apply_zoom(loupe_state.zoom.zoom_level + steps, x, y);
+	}
+	case ca::copy_coord:
+	{
+		auto [x, y] = rel_win_center();
+		return copy_coordinate(x, y);
 	}
 
 	case ca::settings:		return open_settings(hwnd);
@@ -1744,7 +1757,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-alpha10"
+#define PLUGIN_VERSION	"v2.00-alpha11"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

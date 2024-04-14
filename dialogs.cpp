@@ -148,7 +148,7 @@ protected:
 			default: std::unreachable();
 			}
 
-			init_combo_items(combo, curr, combo_data);
+			init_combo_items(combo, curr, commands_combo_data);
 		}
 
 		return false;
@@ -177,10 +177,11 @@ protected:
 	}
 
 public:
-	constexpr static CtrlData<Command> combo_data[] = {
+	constexpr static CtrlData<Command> commands_combo_data[] = {
 			{ IDS_CMD_NONE, 			Command::none					},
 			{ IDS_CMD_SWAP_ZOOM, 		Command::swap_zoom_level		},
 			{ IDS_CMD_COPY_COLOR, 		Command::copy_color_code		},
+			{ IDS_CMD_COPY_COORD, 		Command::copy_coord				},
 			{ IDS_CMD_FOLLOW_CURSOR, 	Command::toggle_follow_cursor	},
 			{ IDS_CMD_CENTRALIZE, 		Command::centralize				},
 			{ IDS_CMD_TOGGLE_GRID, 		Command::toggle_grid			},
@@ -208,6 +209,7 @@ private:
 		case Command::none:					id = IDS_DESC_CMD_NONE;			break;
 		case Command::swap_zoom_level:		id = IDS_DESC_CMD_SWAP_ZOOM;	break;
 		case Command::copy_color_code:		id = IDS_DESC_CMD_COPY_COLOR;	break;
+		case Command::copy_coord:			id = IDS_DESC_CMD_COPY_COORD;	break;
 		case Command::toggle_follow_cursor:	id = IDS_DESC_CMD_FOLLOW;		break;
 		case Command::centralize:			id = IDS_DESC_CMD_CENTRALIZE;	break;
 		case Command::toggle_grid:			id = IDS_DESC_CMD_GRID;			break;
@@ -229,7 +231,7 @@ protected:
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		constexpr auto curr = Command::swap_zoom_level;
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), curr, click_action::combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), curr, click_action::commands_combo_data);
 		on_change_command(curr);
 
 		return false;
@@ -664,19 +666,15 @@ protected:
 
 	bool on_init(HWND) override
 	{
-		constexpr CtrlData<ColorFormat> combo_data1[] = {
+		constexpr CtrlData<ColorFormat> combo_data[] = {
 			{ IDS_TIP_COLOR_FMT_HEX,	ColorFormat::hexdec6	},
 			{ IDS_TIP_COLOR_FMT_RGB,	ColorFormat::dec3x3		},
-		};
-		constexpr CtrlData<CoordFormat> combo_data2[] = {
-			{ IDS_TIP_COORD_FMT_TL,	CoordFormat::origin_top_left	},
-			{ IDS_TIP_COORD_FMT_C,	CoordFormat::origin_center		},
 		};
 
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.color_fmt, combo_data1);
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.coord_fmt, combo_data2);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.color_fmt, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.coord_fmt, coord_combo_data);
 
 		return false;
 	}
@@ -702,6 +700,11 @@ protected:
 		}
 		return false;
 	}
+public:
+	constexpr static CtrlData<CoordFormat> coord_combo_data[] = {
+		{ IDS_COORD_FMT_TOPLEFT,	CoordFormat::origin_top_left	},
+		{ IDS_COORD_FMT_CENTER,		CoordFormat::origin_center		},
+	};
 };
 
 
@@ -1166,6 +1169,63 @@ protected:
 };
 
 
+class command_clipboard_format : public dialog_base {
+	using ColorFormat = Settings::ColorFormat;
+	using CoordFormat = Settings::CoordFormat;
+
+public:
+	ColorFormat& color;
+	CoordFormat& coord;
+	command_clipboard_format(ColorFormat& color, CoordFormat& coord) : color{ color }, coord{ coord } {}
+
+private:
+	void on_change_color(ColorFormat data_new) { color = data_new; }
+	void on_change_coord(CoordFormat data_new) { coord = data_new; }
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_CMD_CLIPBOARD; }
+
+	bool on_init(HWND) override
+	{
+		constexpr CtrlData<ColorFormat> combo_data[] = {
+			{ IDS_CXT_COLOR_FMT_HEX,	ColorFormat::hexdec6	},
+			{ IDS_CXT_COLOR_FMT_RGB,	ColorFormat::dec3x3		},
+		};
+
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), color, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), coord, tip_drag_format::coord_combo_data);
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_CLIPBOARD_FMT)));
+
+		return false;
+	}
+
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case CBN_SELCHANGE:
+				switch (id) {
+				case IDC_COMBO1:
+					on_change_color(get_combo_data<ColorFormat>(ctrl));
+					return true;
+				case IDC_COMBO2:
+					on_change_coord(get_combo_data<CoordFormat>(ctrl));
+					return true;
+				}
+				break;
+			}
+			break;
+		}
+		return false;
+	}
+};
+
+
 ////////////////////////////////
 // ダイアログ本体．
 ////////////////////////////////
@@ -1192,13 +1252,37 @@ class setting_dlg : public dialog_base {
 		//color,
 	};
 	std::map<tab_kind, std::unique_ptr<vscroll_form>> pages{};
-	static inline constinit tab_kind last_selected_tab = tab_kind::wheel_zoom;
+	static inline constinit tab_kind last_selected_tab = tab_kind::drag_move_loupe;
 
 	SIZE prev_size{};
 
 	vscroll_form* create_page(tab_kind kind)
 	{
 		switch (kind) {
+		case tab_kind::drag_move_loupe:
+			return new vscroll_form{
+				new drag_keys{ curr.loupe_drag.keys },
+				new drag_range{ curr.loupe_drag.range },
+				new wheel_zoom{ curr.loupe_drag.wheel },
+				new loupe_drag{ curr.loupe_drag },
+			};
+		case tab_kind::drag_show_tip:
+			return new vscroll_form{
+				new drag_keys{ curr.tip_drag.keys },
+				new drag_range{ curr.tip_drag.range },
+				new wheel_zoom{ curr.tip_drag.wheel },
+				new tip_drag{ curr.tip_drag },
+				new tip_drag_format{ curr.tip_drag },
+				// TODO: fonts?
+			};
+		case tab_kind::drag_exedit:
+			return new vscroll_form{
+				new drag_keys{ curr.exedit_drag.keys },
+				new drag_range{ curr.exedit_drag.range },
+				new wheel_zoom{ curr.exedit_drag.wheel },
+				new exedit_drag{ curr.exedit_drag },
+			};
+
 			{
 				Settings::ClickActions::Button* btn;
 		case tab_kind::action_left:
@@ -1226,29 +1310,12 @@ class setting_dlg : public dialog_base {
 				new click_action_desc{},
 			};
 			}
-
-		case tab_kind::drag_move_loupe:
+		case tab_kind::commands:
 			return new vscroll_form{
-				new drag_keys{ curr.loupe_drag.keys },
-				new drag_range{ curr.loupe_drag.range },
-				new wheel_zoom{ curr.loupe_drag.wheel },
-				new loupe_drag{ curr.loupe_drag },
-			};
-		case tab_kind::drag_show_tip:
-			return new vscroll_form{
-				new drag_keys{ curr.tip_drag.keys },
-				new drag_range{ curr.tip_drag.range },
-				new wheel_zoom{ curr.tip_drag.wheel },
-				new tip_drag{ curr.tip_drag },
-				new tip_drag_format{ curr.tip_drag },
-				// TODO: fonts?
-			};
-		case tab_kind::drag_exedit:
-			return new vscroll_form{
-				new drag_keys{ curr.exedit_drag.keys },
-				new drag_range{ curr.exedit_drag.range },
-				new wheel_zoom{ curr.exedit_drag.wheel },
-				new exedit_drag{ curr.exedit_drag },
+				new command_swap_zoom{ curr.commands.swap_zoom_level_pivot },
+				new command_step_zoom{ curr.commands.step_zoom_pivot, curr.commands.step_zoom_num_steps },
+				new command_clipboard_format{ curr.commands.copy_color_fmt, curr.commands.copy_coord_fmt },
+				new click_action_desc{},
 			};
 
 		case tab_kind::wheel_zoom:
@@ -1257,21 +1324,18 @@ class setting_dlg : public dialog_base {
 				new zoom_options{ curr.zoom },
 			};
 
+		case tab_kind::grid:
+			return new vscroll_form{
+				new grid_options{ curr.grid },
+			};
+
 		case tab_kind::toast:
 			return new vscroll_form{
 				new toast_functions{ curr.toast },
 				// TODO: fonts?
 			};
-		case tab_kind::grid:
-			return new vscroll_form{
-				new grid_options{ curr.grid },
-			};
-		case tab_kind::commands:
-			return new vscroll_form{
-				new command_swap_zoom{ curr.commands.swap_zoom_level_pivot },
-				new command_step_zoom{ curr.commands.step_zoom_pivot, curr.commands.step_zoom_num_steps },
-				new click_action_desc{},
-			};
+
+		// TODO: color?
 		}
 		return nullptr;
 	}
@@ -1299,7 +1363,6 @@ protected:
 	bool on_init(HWND) override
 	{
 		constexpr CtrlData<tab_kind> headers[] = {
-			{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
 			{ IDS_DLG_TAB_DRAG_LOUPE,	tab_kind::drag_move_loupe	},
 			{ IDS_DLG_TAB_DRAG_TIP,		tab_kind::drag_show_tip		},
 			{ IDS_DLG_TAB_DRAG_EXEDIT,	tab_kind::drag_exedit		},
@@ -1309,8 +1372,9 @@ protected:
 			{ IDS_DLG_TAB_CLK_X1,		tab_kind::action_x1_button	},
 			{ IDS_DLG_TAB_CLK_X2,		tab_kind::action_x2_button	},
 			{ IDS_DLG_TAB_CMD_OPTIONS,	tab_kind::commands			},
-			{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
+			{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
 			{ IDS_DLG_TAB_GRID,			tab_kind::grid				},
+			{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
 		};
 
 		{
