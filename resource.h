@@ -62,26 +62,27 @@
 #define IDS_DLG_TAB_CMD_OPTIONS         158
 #define IDS_DLG_TAB_TOAST               159
 #define IDS_DLG_TAB_GRID                160
-#define IDS_DESC_DRAG_KEYCOND           161
-#define IDS_DESC_DRAG_RANGE             162
-#define IDS_DESC_ZOOM_STEPS             163
-#define IDS_DESC_TIP_FRAIL              164
-#define IDS_DESC_TIP_STATIONARY         165
-#define IDS_DESC_TIP_STICKY             166
-#define IDS_DESC_EXEDIT_FAKE            167
-#define IDS_DESC_GRID_KINDS             168
-#define IDS_DESC_CLIPBOARD_FMT          169
-#define IDS_DESC_CMD_NONE               170
-#define IDS_DESC_CMD_SWAP_ZOOM          171
-#define IDS_DESC_CMD_COPY_COLOR         172
-#define IDS_DESC_CMD_COPY_COORD         173
-#define IDS_DESC_CMD_FOLLOW             174
-#define IDS_DESC_CMD_CENTRALIZE         175
-#define IDS_DESC_CMD_GRID               176
-#define IDS_DESC_CMD_ZOOM_UP            177
-#define IDS_DESC_CMD_ZOOM_DOWN          178
-#define IDS_DESC_CMD_CXT_MENU           179
-#define IDS_DESC_CMD_SETTINGS           180
+#define IDS_DLG_TAB_SEPARATOR           161
+#define IDS_DESC_DRAG_KEYCOND           162
+#define IDS_DESC_DRAG_RANGE             163
+#define IDS_DESC_ZOOM_STEPS             164
+#define IDS_DESC_TIP_FRAIL              165
+#define IDS_DESC_TIP_STATIONARY         166
+#define IDS_DESC_TIP_STICKY             167
+#define IDS_DESC_EXEDIT_FAKE            168
+#define IDS_DESC_GRID_KINDS             169
+#define IDS_DESC_CLIPBOARD_FMT          170
+#define IDS_DESC_CMD_NONE               171
+#define IDS_DESC_CMD_SWAP_ZOOM          172
+#define IDS_DESC_CMD_COPY_COLOR         173
+#define IDS_DESC_CMD_COPY_COORD         174
+#define IDS_DESC_CMD_FOLLOW             175
+#define IDS_DESC_CMD_CENTRALIZE         176
+#define IDS_DESC_CMD_GRID               177
+#define IDS_DESC_CMD_ZOOM_UP            178
+#define IDS_DESC_CMD_ZOOM_DOWN          179
+#define IDS_DESC_CMD_CXT_MENU           180
+#define IDS_DESC_CMD_SETTINGS           181
 #define IDD_VSCROLLFORM                 800
 #define IDD_SETTINGS                    801
 #define IDD_SETTINGS_FORM_CLICK_ACTION  802
@@ -141,7 +142,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        817
+#define _APS_NEXT_RESOURCE_VALUE        818
 #define _APS_NEXT_COMMAND_VALUE         40013
 #define _APS_NEXT_CONTROL_VALUE         1026
 #define _APS_NEXT_SYMED_VALUE           101

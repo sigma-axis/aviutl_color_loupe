@@ -1254,17 +1254,21 @@ private:
 		grid,
 		commands,
 		//color,
+
+		separator,
 	};
 	constexpr static CtrlData<tab_kind> headers[] = {
 		{ IDS_DLG_TAB_DRAG_LOUPE,	tab_kind::drag_move_loupe	},
 		{ IDS_DLG_TAB_DRAG_TIP,		tab_kind::drag_show_tip		},
 		{ IDS_DLG_TAB_DRAG_EXEDIT,	tab_kind::drag_exedit		},
+		{ IDS_DLG_TAB_SEPARATOR,	tab_kind::separator			},
 		{ IDS_DLG_TAB_CLK_LEFT,		tab_kind::action_left		},
 		{ IDS_DLG_TAB_CLK_RIGHT,	tab_kind::action_right		},
 		{ IDS_DLG_TAB_CLK_MIDDLE,	tab_kind::action_middle		},
 		{ IDS_DLG_TAB_CLK_X1,		tab_kind::action_x1_button	},
 		{ IDS_DLG_TAB_CLK_X2,		tab_kind::action_x2_button	},
 		{ IDS_DLG_TAB_CMD_OPTIONS,	tab_kind::commands			},
+		{ IDS_DLG_TAB_SEPARATOR,	tab_kind::separator			},
 		{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
 		{ IDS_DLG_TAB_GRID,			tab_kind::grid				},
 		{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
@@ -1415,34 +1419,40 @@ private:
 	void on_select(tab_kind kind)
 	{
 		auto& page = pages[kind];
-		if (page && page->hwnd != nullptr &&
+		if (!page) page.reset(create_page(kind));
+		if (!page) return;
+
+		if (page->hwnd != nullptr &&
 			(::GetWindowLongW(page->hwnd, GWL_STYLE) & WS_VISIBLE) != 0) return;
+
+		if (auto rc = calc_page_rect(); 
+			page->hwnd == nullptr) page->create(hwnd, rc);
+		else {
+			::MoveWindow(page->hwnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+			::ShowWindow(page->hwnd, SW_SHOW);
+		}
 
 		for (auto& [k, other] : pages) {
 			if (k != kind && other && other->hwnd != nullptr)
 				::ShowWindow(other->hwnd, SW_HIDE);
-		}
-
-		if (!page) page.reset(create_page(kind));
-		if (!page) return;
-
-		auto rc = calc_page_rect();
-		::InvalidateRect(hwnd, &rc, TRUE);
-
-		if (page->hwnd == nullptr) page->create(hwnd, rc);
-		else {
-			::MoveWindow(page->hwnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
-			::ShowWindow(page->hwnd, SW_SHOW);
 		}
 	}
 
 	void on_apply() const { settings = curr; }
 	void on_close(bool accept)
 	{
-		last_selected_tab = get_list_data<tab_kind>(::GetDlgItem(hwnd, IDC_LIST1));
-		RECT rc;
-		::GetWindowRect(hwnd, &rc);
-		last_closed_size.cx = rc.right - rc.left; last_closed_size.cy = rc.bottom - rc.top;
+		// remember the last selected tab.
+		for (auto& [kind, page] : pages) {
+			if (page && page->hwnd != nullptr &&
+				(::GetWindowLongW(page->hwnd, GWL_STYLE) & WS_VISIBLE) != 0) {
+				last_selected_tab = kind;
+				break;
+			}
+		}
+
+		// remember the window size.
+		RECT rc; ::GetWindowRect(hwnd, &rc);
+		last_closed_size = { rc.right - rc.left, rc.bottom - rc.top };
 		::EndDialog(hwnd, accept ? TRUE : FALSE);
 	}
 
@@ -1468,11 +1478,12 @@ protected:
 
 		// restore the size of the window when it was closed last time.
 		if (last_closed_size.cx > 0 && last_closed_size.cy > 0) {
-			RECT rc;
-			::GetWindowRect(hwnd, &rc);
-			rc.left = (rc.left + rc.right - last_closed_size.cx) / 2;
-			rc.top = (rc.top + rc.bottom - last_closed_size.cy) / 2;
-			::MoveWindow(hwnd, rc.left, rc.top, last_closed_size.cx, last_closed_size.cy, FALSE);
+			auto cx = std::max<int>(last_closed_size.cx, window_width_min),
+				cy = std::max<int>(last_closed_size.cy, window_height_min);
+
+			RECT rc; ::GetWindowRect(hwnd, &rc);
+			::MoveWindow(hwnd, (rc.left + rc.right - cx) / 2,
+				(rc.top + rc.bottom - cy) / 2, cx, cy, FALSE);
 		}
 
 		// set the first focus to the list box.
