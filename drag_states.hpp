@@ -125,7 +125,7 @@ namespace sigma_lib::W32::custom::mouse
 			};
 			// make sure to be recognized as "valid".
 			invalid_range = DragInvalidRange::AlwaysValid();
-			::SendMessageW(DragStateBase::hwnd, WM_MOUSEMOVE, make_wparam(), make_lparam());
+			::PostMessageW(DragStateBase::hwnd, WM_MOUSEMOVE, make_wparam(), make_lparam());
 		}
 		static void set_timer(int time_ms) {
 			if (time_ms < USER_TIMER_MINIMUM) time_ms = USER_TIMER_MINIMUM;

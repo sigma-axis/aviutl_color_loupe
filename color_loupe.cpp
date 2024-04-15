@@ -187,8 +187,8 @@ static inline constinit struct LoupeState {
 		tip = { .x = w2, .y = h2, .visible_level = 0 };
 	}
 } loupe_state;
-static_assert(LoupeState::Zoom::zoom_level_max == Settings::ZoomBehavior::max_zoom_level_max);
-static_assert(LoupeState::Zoom::zoom_level_min == Settings::ZoomBehavior::min_zoom_level_min);
+static_assert(LoupeState::Zoom::zoom_level_max == Settings::Zoom::zoom_level_max_max);
+static_assert(LoupeState::Zoom::zoom_level_min == Settings::Zoom::zoom_level_min_min);
 
 // define a function to export.
 std::tuple<int, int> Settings::HelperFunctions::ScaleFromZoomLevel(int zoom_level) {
@@ -410,7 +410,8 @@ static inline constinit class ToastManager {
 	void erase_core() {
 		if (toast.visible) {
 			toast.visible = false;
-			if (hwnd != nullptr) ::InvalidateRect(hwnd, nullptr, FALSE);
+			if (hwnd != nullptr)
+				::PostMessageW(hwnd, WM_PAINT, {}, {}); // ::InvalidateRect() caused flickering.
 		}
 	}
 
@@ -430,9 +431,9 @@ public:
 
 		// load / format the message string from resource.
 		if constexpr (sizeof...(args) > 0) {
-			intptr_t ptr;
+			const wchar_t* ptr;
 			::LoadStringW(this_dll, id, reinterpret_cast<wchar_t*>(&ptr), 0);
-			std::swprintf(toast.message, std::size(toast.message), reinterpret_cast<wchar_t*>(ptr), args...);
+			std::swprintf(toast.message, std::size(toast.message), ptr, args...);
 		}
 		else ::LoadStringW(this_dll, id, toast.message, std::size(toast.message));
 		toast.visible = true;
@@ -855,6 +856,7 @@ struct DragCxt {
 	bool redraw_main;
 };
 class DragState : public DragStateBase<DragCxt> {
+	friend class VoidDragState;
 protected:
 	static std::pair<double, double> win2pic(const POINT& p) {
 		RECT rc; ::GetClientRect(hwnd, &rc);
@@ -1119,7 +1121,26 @@ protected:
 	Settings::WheelZoom WheelZoom() override { return settings.exedit_drag.wheel; }
 } exedit_drag;
 
-static inline constinit VoidDrag<DragState> void_drag;
+// placeholder drag. might be used as a fallback.
+static inline constinit class VoidDragState : public VoidDrag<DragState> {
+	DragState* surrogate = nullptr;
+
+protected:
+	// let resemble the "click-or-not" behavior to the origin of the fallback.
+	DragInvalidRange InvalidRange() override {
+		return surrogate != nullptr ? surrogate->InvalidRange() : VoidDrag<DragState>::InvalidRange();
+	}
+
+public:
+	using context = DragState::context;
+	using DragState::Start;
+	bool Start(HWND hwnd, const POINT& drag_start, context& cxt, DragState* surrogate) {
+		this->surrogate = surrogate;
+		auto ret = Start(hwnd, drag_start, cxt);
+		this->surrogate = nullptr;
+		return ret;
+	}
+} void_drag;
 
 inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context& cxt)
 {
@@ -1144,17 +1165,19 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 		alt = ::GetKeyState(VK_MENU) < 0;
 
 	constexpr DragState* drags[] = { &loupe_drag, &tip_drag, &exedit_drag };
-	for (auto drag : drags) {
+	DragState* chosen = nullptr;
+	for (auto* drag : drags) {
 		// check the button/key-combination condition.
 		if (drag->KeysActivate().match(btn, ctrl, shift, alt)) {
 			// then type-specific condition.
 			if (drag->Start(hwnd, drag_start, cxt)) return;
+			chosen = drag;
 			break;
 		}
 	}
 
 	// initiate the "placeholder drag".
-	void_drag.Start(hwnd, drag_start, cxt);
+	void_drag.Start(hwnd, drag_start, cxt, chosen);
 }
 
 
@@ -1205,8 +1228,8 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 {
 	// ignore if the zoom level is identical.
 	new_level = std::clamp(new_level,
-		std::max<int>(settings.zoom.min_zoom_level, LoupeState::Zoom::zoom_level_min),
-		std::min<int>(settings.zoom.max_zoom_level, LoupeState::Zoom::zoom_level_max));
+		std::max<int>(settings.zoom.zoom_level_min, LoupeState::Zoom::zoom_level_min),
+		std::min<int>(settings.zoom.zoom_level_max, LoupeState::Zoom::zoom_level_max));
 	if (new_level == loupe_state.zoom.zoom_level) return false;
 
 	// apply.
@@ -1500,7 +1523,7 @@ static inline void on_command(bool& redraw_loupe, HWND hwnd, Settings::ClickActi
 	case ca::zoom_step_down:
 	case ca::zoom_step_up:
 	{
-		auto steps = settings.commands.step_zoom_num_steps;
+		int steps = settings.commands.step_zoom_num_steps;
 		if (cmd == ca::zoom_step_down) steps = -steps;
 		double x = 0, y = 0;
 		if (settings.commands.step_zoom_pivot != Settings::WheelZoom::center)
@@ -1752,7 +1775,9 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			// if a drag operation is being held, cancel it with ESC key.
 			if (DragState::Cancel(cxt)) break;
 		}
-		else if (wparam == VK_APPS) {
+		else if (wparam == VK_F10 && (lparam & KF_ALTDOWN) == 0 && message == WM_SYSKEYDOWN
+			&& ::GetKeyState(VK_SHIFT) < 0 && ::GetKeyState(VK_CONTROL) >= 0) {
+			// Shift + F10:
 			// hard-coded shortcut key that shows up the context menu.
 			cxt.redraw_loupe = Menu::popup_menu(hwnd, false);
 			break;
@@ -1798,7 +1823,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-beta1"
+#define PLUGIN_VERSION	"v2.00-beta2"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

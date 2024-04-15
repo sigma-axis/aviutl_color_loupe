@@ -773,17 +773,17 @@ protected:
 // 拡大率の最大・最小．
 ////////////////////////////////
 class zoom_options : public dialog_base {
-	using Zoom = Settings::ZoomBehavior;
+	using Zoom = Settings::Zoom;
 public:
 	Zoom& zoom;
 	zoom_options(Zoom& zoom) : zoom{ zoom } {}
 
 private:
 	void on_change_min(int8_t data_new) {
-		zoom.min_zoom_level = std::clamp(data_new, Zoom::min_zoom_level_min, Zoom::min_zoom_level_max);
+		zoom.zoom_level_min = std::clamp(data_new, Zoom::zoom_level_min_min, Zoom::zoom_level_min_max);
 	}
 	void on_change_max(int8_t data_new) {
-		zoom.max_zoom_level = std::clamp(data_new, Zoom::max_zoom_level_min, Zoom::max_zoom_level_max);
+		zoom.zoom_level_max = std::clamp(data_new, Zoom::zoom_level_max_min, Zoom::zoom_level_max_max);
 	}
 	void set_text(int id, int level) {
 		auto [n, d] = Settings::HelperFunctions::ScaleFromZoomLevel(level);
@@ -801,15 +801,15 @@ protected:
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		auto slider = ::GetDlgItem(hwnd, IDC_SLIDER1);
-		init_slider(slider, zoom.min_zoom_level,
-			Zoom::min_zoom_level_min, Zoom::min_zoom_level_max, 1, 4);
+		init_slider(slider, zoom.zoom_level_min,
+			Zoom::zoom_level_min_min, Zoom::zoom_level_min_max, 1, 4);
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(0));
-		set_text(IDC_EDIT1, zoom.min_zoom_level);
+		set_text(IDC_EDIT1, zoom.zoom_level_min);
 		slider = ::GetDlgItem(hwnd, IDC_SLIDER2);
-		init_slider(slider, zoom.max_zoom_level,
-			Zoom::max_zoom_level_min, Zoom::max_zoom_level_max, 1, 4);
+		init_slider(slider, zoom.zoom_level_max,
+			Zoom::zoom_level_max_min, Zoom::zoom_level_max_max, 1, 4);
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(0));
-		set_text(IDC_EDIT2, zoom.max_zoom_level);
+		set_text(IDC_EDIT2, zoom.zoom_level_max);
 		return false;
 	}
 
@@ -821,21 +821,21 @@ protected:
 			switch (auto code = 0xffff & wparam) {
 			case TB_ENDTRACK:
 				// make sure minimum is less than maximum or equals.
-				if (zoom.min_zoom_level > zoom.max_zoom_level) {
+				if (zoom.zoom_level_min > zoom.zoom_level_max) {
 					int id_slider, id_edit;
 					switch (::GetDlgCtrlID(ctrl)) {
 					case IDC_SLIDER2:
 						id_slider = IDC_SLIDER1; id_edit = IDC_EDIT1;
-						zoom.min_zoom_level = zoom.max_zoom_level;
+						zoom.zoom_level_min = zoom.zoom_level_max;
 						break;
 					default:
 						id_slider = IDC_SLIDER2; id_edit = IDC_EDIT2;
-						zoom.max_zoom_level = zoom.min_zoom_level;
+						zoom.zoom_level_max = zoom.zoom_level_min;
 						break;
 					}
 					auto sc = suppress_callback();
-					set_slider_value(::GetDlgItem(hwnd, id_slider), zoom.min_zoom_level);
-					set_text(id_edit, zoom.min_zoom_level);
+					set_slider_value(::GetDlgItem(hwnd, id_slider), zoom.zoom_level_min);
+					set_text(id_edit, zoom.zoom_level_min);
 					return true;
 				}
 				break;
@@ -848,11 +848,11 @@ protected:
 				switch (::GetDlgCtrlID(ctrl)) {
 				case IDC_SLIDER1:
 					on_change_min(get_slider_value(ctrl));
-					set_text(IDC_EDIT1, zoom.min_zoom_level);
+					set_text(IDC_EDIT1, zoom.zoom_level_min);
 					return true;
 				case IDC_SLIDER2:
 					on_change_max(get_slider_value(ctrl));
-					set_text(IDC_EDIT2, zoom.max_zoom_level);
+					set_text(IDC_EDIT2, zoom.zoom_level_max);
 					return true;
 				}
 				break;
@@ -991,7 +991,7 @@ protected:
 ////////////////////////////////
 class grid_options : public dialog_base {
 	using Grid = Settings::Grid;
-	constexpr static auto zoom_level_max = Settings::ZoomBehavior::max_zoom_level_max;
+	constexpr static auto zoom_level_max = Settings::Zoom::zoom_level_max_max;
 public:
 	Grid& grid;
 	grid_options(Grid& grid) : grid{ grid } {}
@@ -1230,6 +1230,10 @@ protected:
 // ダイアログ本体．
 ////////////////////////////////
 class setting_dlg : public dialog_base {
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS; }
+
+private:
 	constexpr static int window_width_min = 450, window_height_min = 200;
 
 	enum class tab_kind : uint8_t {
@@ -1251,12 +1255,22 @@ class setting_dlg : public dialog_base {
 		commands,
 		//color,
 	};
+	constexpr static CtrlData<tab_kind> headers[] = {
+		{ IDS_DLG_TAB_DRAG_LOUPE,	tab_kind::drag_move_loupe	},
+		{ IDS_DLG_TAB_DRAG_TIP,		tab_kind::drag_show_tip		},
+		{ IDS_DLG_TAB_DRAG_EXEDIT,	tab_kind::drag_exedit		},
+		{ IDS_DLG_TAB_CLK_LEFT,		tab_kind::action_left		},
+		{ IDS_DLG_TAB_CLK_RIGHT,	tab_kind::action_right		},
+		{ IDS_DLG_TAB_CLK_MIDDLE,	tab_kind::action_middle		},
+		{ IDS_DLG_TAB_CLK_X1,		tab_kind::action_x1_button	},
+		{ IDS_DLG_TAB_CLK_X2,		tab_kind::action_x2_button	},
+		{ IDS_DLG_TAB_CMD_OPTIONS,	tab_kind::commands			},
+		{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
+		{ IDS_DLG_TAB_GRID,			tab_kind::grid				},
+		{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
+	};
+
 	std::map<tab_kind, std::unique_ptr<vscroll_form>> pages{};
-	static inline constinit tab_kind last_selected_tab = tab_kind::drag_move_loupe;
-	static inline constinit SIZE last_closed_size = { -1, -1 };
-
-	SIZE prev_size{};
-
 	vscroll_form* create_page(tab_kind kind)
 	{
 		switch (kind) {
@@ -1358,59 +1372,7 @@ class setting_dlg : public dialog_base {
 		return rc1;
 	}
 
-protected:
-	uintptr_t template_id() const override { return IDD_SETTINGS; }
-
-	bool on_init(HWND) override
-	{
-		constexpr CtrlData<tab_kind> headers[] = {
-			{ IDS_DLG_TAB_DRAG_LOUPE,	tab_kind::drag_move_loupe	},
-			{ IDS_DLG_TAB_DRAG_TIP,		tab_kind::drag_show_tip		},
-			{ IDS_DLG_TAB_DRAG_EXEDIT,	tab_kind::drag_exedit		},
-			{ IDS_DLG_TAB_CLK_LEFT,		tab_kind::action_left		},
-			{ IDS_DLG_TAB_CLK_RIGHT,	tab_kind::action_right		},
-			{ IDS_DLG_TAB_CLK_MIDDLE,	tab_kind::action_middle		},
-			{ IDS_DLG_TAB_CLK_X1,		tab_kind::action_x1_button	},
-			{ IDS_DLG_TAB_CLK_X2,		tab_kind::action_x2_button	},
-			{ IDS_DLG_TAB_CMD_OPTIONS,	tab_kind::commands			},
-			{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
-			{ IDS_DLG_TAB_GRID,			tab_kind::grid				},
-			{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
-		};
-
-		// save the last size of this window.
-		{
-			RECT rc; ::GetClientRect(hwnd, &rc);
-			prev_size.cx = rc.right; prev_size.cy = rc.bottom;
-		}
-
-		auto list = ::GetDlgItem(hwnd, IDC_LIST1);
-		{
-			auto sc = suppress_callback();
-			init_list_items(list, last_selected_tab, headers);
-		}
-
-		// update to create the first page.
-		::SendMessageW(hwnd, WM_COMMAND,
-			IDC_LIST1 | (LBN_SELCHANGE << 16),
-			reinterpret_cast<LPARAM>(list));
-
-		// set the first focus to the list box.
-		::SetFocus(list);
-
-		// restore the size of the window when it was closed last time.
-		if (last_closed_size.cx > 0 && last_closed_size.cy > 0) {
-			RECT rc;
-			::GetWindowRect(hwnd, &rc);
-			rc.left = (rc.left + rc.right - last_closed_size.cx) / 2;
-			rc.top = (rc.top + rc.bottom - last_closed_size.cy) / 2;
-			::MoveWindow(hwnd, rc.left, rc.top, last_closed_size.cx, last_closed_size.cy, FALSE);
-		}
-
-		// don't set the first focus to the OK button.
-		return false;
-	}
-
+	SIZE prev_size{};
 	void on_resize(int new_cx, int new_cy)
 	{
 		// dynamic layout.
@@ -1450,6 +1412,30 @@ protected:
 		::InvalidateRect(hwnd, nullptr, FALSE);
 	}
 
+	void on_select(tab_kind kind)
+	{
+		auto& page = pages[kind];
+		if (page && page->hwnd != nullptr &&
+			(::GetWindowLongW(page->hwnd, GWL_STYLE) & WS_VISIBLE) != 0) return;
+
+		for (auto& [k, other] : pages) {
+			if (k != kind && other && other->hwnd != nullptr)
+				::ShowWindow(other->hwnd, SW_HIDE);
+		}
+
+		if (!page) page.reset(create_page(kind));
+		if (!page) return;
+
+		auto rc = calc_page_rect();
+		::InvalidateRect(hwnd, &rc, TRUE);
+
+		if (page->hwnd == nullptr) page->create(hwnd, rc);
+		else {
+			::MoveWindow(page->hwnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+			::ShowWindow(page->hwnd, SW_SHOW);
+		}
+	}
+
 	void on_apply() const { settings = curr; }
 	void on_close(bool accept)
 	{
@@ -1460,25 +1446,44 @@ protected:
 		::EndDialog(hwnd, accept ? TRUE : FALSE);
 	}
 
-	void on_select(tab_kind kind)
+	static inline constinit tab_kind last_selected_tab = headers[0].data;
+	static inline constinit SIZE last_closed_size = { -1, -1 };
+protected:
+	bool on_init(HWND) override
 	{
-		for (auto& it : pages) {
-			if (it.first != kind) ::ShowWindow(it.second->hwnd, SW_HIDE);
+		// save the last size of this window.
+		{
+			RECT rc; ::GetClientRect(hwnd, &rc);
+			prev_size.cx = rc.right; prev_size.cy = rc.bottom;
 		}
 
-		auto& page = pages[kind];
-		if (!page) page.reset(create_page(kind));
-		if (!page) return;
+		auto list = ::GetDlgItem(hwnd, IDC_LIST1);
+		{
+			auto sc = suppress_callback();
+			init_list_items(list, last_selected_tab, headers);
+		}
 
-		if (page->hwnd == nullptr) page->create(hwnd);
-		if (page->hwnd == nullptr) return;
+		// create the first page.
+		on_select(get_list_data<tab_kind>(list));
 
-		auto rc = calc_page_rect();
-		::MoveWindow(page->hwnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
-		::ShowWindow(page->hwnd, SW_SHOW);
+		// restore the size of the window when it was closed last time.
+		if (last_closed_size.cx > 0 && last_closed_size.cy > 0) {
+			RECT rc;
+			::GetWindowRect(hwnd, &rc);
+			rc.left = (rc.left + rc.right - last_closed_size.cx) / 2;
+			rc.top = (rc.top + rc.bottom - last_closed_size.cy) / 2;
+			::MoveWindow(hwnd, rc.left, rc.top, last_closed_size.cx, last_closed_size.cy, FALSE);
+		}
+
+		// set the first focus to the list box.
+		::SetFocus(list);
+
+		// don't set the first focus to the OK button.
+		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam)
+protected:
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		switch (message) {
 		case WM_COMMAND:

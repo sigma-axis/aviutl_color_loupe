@@ -15,7 +15,6 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #include <algorithm>
 #include <vector>
 #include <memory>
-#include <ranges>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -30,14 +29,22 @@ namespace dialogs::basics
 	// Base for dialog classes.
 	////////////////////////////////
 	class dialog_base {
+		struct create_context {
+			dialog_base* that;
+			RECT const* position;
+		};
 		static intptr_t CALLBACK proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 		{
 			bool ret;
 			if (message == WM_INITDIALOG) {
-				auto that = reinterpret_cast<dialog_base*>(lparam);
-				that->hwnd = hwnd;
-				::SetWindowLongW(hwnd, GWL_USERDATA, reinterpret_cast<LONG>(that));
-				ret = that->on_init(reinterpret_cast<HWND>(wparam));
+				auto cxt = reinterpret_cast<create_context*>(lparam);
+				cxt->that->hwnd = hwnd;
+				::SetWindowLongW(hwnd, GWL_USERDATA, reinterpret_cast<LONG>(cxt->that));
+				ret = cxt->that->on_init(reinterpret_cast<HWND>(wparam));
+				if (cxt->position != nullptr) {
+					auto& rc = *cxt->position;
+					::MoveWindow(hwnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+				}
 			}
 			else {
 				auto that = reinterpret_cast<dialog_base*>(::GetWindowLongW(hwnd, GWL_USERDATA));
@@ -116,21 +123,23 @@ namespace dialogs::basics
 
 	public:
 		HWND hwnd = nullptr;
-		void create(HWND parent)
-		{
-			if (hwnd == nullptr)
-				::CreateDialogParamW(this_dll, MAKEINTRESOURCEW(template_id()),
-					parent, proc, reinterpret_cast<LPARAM>(this));
+		void create(HWND parent, const RECT& position = *static_cast<RECT*>(nullptr)) {
+			if (hwnd != nullptr) return;
+
+			create_context cxt{ .that = this, .position = &position };
+			::CreateDialogParamW(this_dll, MAKEINTRESOURCEW(template_id()),
+				parent, proc, reinterpret_cast<LPARAM>(&cxt));
 		}
-		intptr_t modal(HWND parent)
-		{
+		intptr_t modal(HWND parent, const RECT& position = *static_cast<RECT*>(nullptr)) {
 			if (hwnd != nullptr) return 0;
 
 			// find the top-level window containing `parent`,
 			// for the cases like SplitWindow or Nest is applied.
 			parent = ::GetAncestor(parent, GA_ROOT);
+
+			create_context cxt{ .that = this, .position = &position };
 			return ::DialogBoxParamW(this_dll, MAKEINTRESOURCEW(template_id()),
-				parent, proc, reinterpret_cast<LPARAM>(this));
+				parent, proc, reinterpret_cast<LPARAM>(&cxt));
 		}
 
 		dialog_base() = default;
@@ -202,7 +211,6 @@ namespace dialogs::basics
 				RECT rc;
 				::GetClientRect(child.inst->hwnd, &rc);
 				child.w = rc.right; child.h = rc.bottom;
-				::ShowWindow(child.inst->hwnd, SW_SHOW);
 			}
 
 			// no default control to focus.
@@ -211,6 +219,7 @@ namespace dialogs::basics
 
 		bool handler(UINT message, WPARAM wparam, LPARAM lparam)
 		{
+			// TODO: scroll to the focused element when a descendant control got a focus.
 			switch (message) {
 			case WM_SIZE:
 				on_resize(static_cast<int16_t>(lparam), static_cast<int16_t>(lparam >> 16));
@@ -244,7 +253,6 @@ namespace dialogs::basics
 			case WM_MOUSEWHEEL:
 			{
 				auto wheel_delta = static_cast<int16_t>(wparam >> 16);
-
 				set_scroll_pos(get_scroll_pos() - scroll_wheel * wheel_delta / WHEEL_DELTA);
 				return true;
 			}

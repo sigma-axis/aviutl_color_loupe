@@ -75,8 +75,8 @@ inline constinit struct Settings {
 	};
 
 	struct LoupeDrag {
-		KeysActivate keys{ MouseButton::left, KeysActivate::dontcare, KeysActivate::dontcare, KeysActivate::off };
-		DragInvalidRange range{ .distance = 2, .timespan = 800 };
+		KeysActivate keys{ MouseButton::left, KeysActivate::off, KeysActivate::dontcare, KeysActivate::dontcare };
+		DragInvalidRange range = DragInvalidRange::AlwaysValid();
 		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
 		bool lattice = false;
@@ -84,7 +84,7 @@ inline constinit struct Settings {
 	} loupe_drag;
 
 	struct TipDrag {
-		KeysActivate keys{ MouseButton::left, KeysActivate::off, KeysActivate::dontcare, KeysActivate::dontcare };
+		KeysActivate keys{ MouseButton::right, KeysActivate::off, KeysActivate::dontcare, KeysActivate::dontcare };
 		DragInvalidRange range = DragInvalidRange::AlwaysValid();
 		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
@@ -112,7 +112,7 @@ inline constinit struct Settings {
 
 	struct ExEditDrag {
 		KeysActivate keys{ MouseButton::left, KeysActivate::on, KeysActivate::dontcare, KeysActivate::dontcare };
-		DragInvalidRange range{ .distance = -1, .timespan = 0 };
+		DragInvalidRange range = DragInvalidRange::AlwaysValid();
 		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
 		enum KeyFake : uint8_t {
@@ -121,21 +121,20 @@ inline constinit struct Settings {
 			on		= 2,
 			invert	= 3,
 		};
-		KeyFake fake_shift = flat, fake_alt = off; // no ctrl key; it's kind of special.
+		KeyFake fake_shift = flat, fake_alt = flat; // no ctrl key; it's kind of special.
 	} exedit_drag;
 
-	struct ZoomBehavior {
+	struct Zoom {
 		WheelZoom wheel{
 			.enabled = true,
 			.reversed = false,
 			.num_steps = 1,
 			.pivot = WheelZoom::center,
 		};
-		int8_t min_zoom_level = min_zoom_level_min,
-			max_zoom_level = max_zoom_level_max;
-
-		constexpr static int8_t min_zoom_level_min = -13, min_zoom_level_max = 20;
-		constexpr static int8_t max_zoom_level_min = -13, max_zoom_level_max = 20;
+		int8_t zoom_level_min = zoom_level_min_min,
+			zoom_level_max = zoom_level_max_max;
+		constexpr static int8_t zoom_level_min_min = -13, zoom_level_min_max = 20;
+		constexpr static int8_t zoom_level_max_min = -13, zoom_level_max_max = 20;
 	} zoom;
 
 	struct ColorScheme {
@@ -192,7 +191,7 @@ inline constinit struct Settings {
 		int8_t least_zoom_thick = 12;
 		constexpr static int8_t
 			least_zoom_thin_min	= 6, // x 3.00
-			least_zoom_thin_max	= ZoomBehavior::max_zoom_level_max + 1,
+			least_zoom_thin_max	= Zoom::zoom_level_max_max + 1,
 			least_zoom_thick_min	= least_zoom_thin_min,
 			least_zoom_thick_max	= least_zoom_thin_max;
 
@@ -222,11 +221,12 @@ inline constinit struct Settings {
 		};
 		struct Button {
 			Command click, dblclk;
-		}	left{ none, swap_zoom_level },
-			right{ context_menu, copy_color_code },
-			middle{ toggle_follow_cursor, none },
-			x1{ none, none },
-			x2{ none,none };
+			bool cancels_drag; // TODO: functionality not implemented yet.
+		}	left{ none, swap_zoom_level, true },
+			right{ context_menu, copy_color_code, true },
+			middle{ toggle_follow_cursor, none, true },
+			x1{ none, none, true },
+			x2{ none,none, true };
 
 		WheelZoom::Pivot swap_zoom_level_pivot = WheelZoom::cursor;
 
@@ -266,6 +266,7 @@ inline constinit struct Settings {
 		load_int(section, range.timespan);\
 		load_bool(section, wheel.enabled);\
 		load_bool(section, wheel.reversed);\
+		load_bool(section, wheel.num_steps);\
 		load_enum(section, wheel.pivot)
 
 		load_drag(loupe_drag);
@@ -289,8 +290,8 @@ inline constinit struct Settings {
 		load_bool(zoom, wheel.enabled);
 		load_bool(zoom, wheel.reversed);
 		load_enum(zoom, wheel.pivot);
-		load_int(zoom, min_zoom_level);
-		load_int(zoom, max_zoom_level);
+		load_int(zoom, zoom_level_min);
+		load_int(zoom, zoom_level_max);
 
 		load_color(color, chrome);
 		load_color(color, back_top);
@@ -323,14 +324,19 @@ inline constinit struct Settings {
 
 		load_enum(commands, left.click);
 		load_enum(commands, left.dblclk);
+		load_bool(commands, left.cancels_drag);
 		load_enum(commands, right.click);
 		load_enum(commands, right.dblclk);
+		load_bool(commands, right.cancels_drag);
 		load_enum(commands, middle.click);
 		load_enum(commands, middle.dblclk);
+		load_bool(commands, middle.cancels_drag);
 		load_enum(commands, x1.click);
 		load_enum(commands, x1.dblclk);
+		load_bool(commands, x1.cancels_drag);
 		load_enum(commands, x2.click);
 		load_enum(commands, x2.dblclk);
+		load_bool(commands, x2.cancels_drag);
 
 		load_enum(commands, swap_zoom_level_pivot);
 		load_enum(commands, step_zoom_pivot);
@@ -368,6 +374,7 @@ inline constinit struct Settings {
 		save_dec(section, range.timespan);\
 		save_bool(section, wheel.enabled);\
 		save_bool(section, wheel.reversed);\
+		save_bool(section, wheel.num_steps);\
 		save_dec(section, wheel.pivot)
 
 		save_drag(loupe_drag);
@@ -391,8 +398,8 @@ inline constinit struct Settings {
 		save_bool(zoom, wheel.enabled);
 		save_bool(zoom, wheel.reversed);
 		save_dec(zoom, wheel.pivot);
-		save_dec(zoom, min_zoom_level);
-		save_dec(zoom, max_zoom_level);
+		save_dec(zoom, zoom_level_min);
+		save_dec(zoom, zoom_level_max);
 
 		//save_color(color, chrome);
 		//save_color(color, back_top);
@@ -425,14 +432,19 @@ inline constinit struct Settings {
 
 		save_dec(commands, left.click);
 		save_dec(commands, left.dblclk);
+		//save_bool(commands, left.cancels_drag);
 		save_dec(commands, right.click);
 		save_dec(commands, right.dblclk);
+		//save_bool(commands, right.cancels_drag);
 		save_dec(commands, middle.click);
 		save_dec(commands, middle.dblclk);
+		//save_bool(commands, middle.cancels_drag);
 		save_dec(commands, x1.click);
 		save_dec(commands, x1.dblclk);
+		//save_bool(commands, x1.cancels_drag);
 		save_dec(commands, x2.click);
 		save_dec(commands, x2.dblclk);
+		//save_bool(commands, x2.cancels_drag);
 
 		save_dec(commands, swap_zoom_level_pivot);
 		save_dec(commands, step_zoom_pivot);
