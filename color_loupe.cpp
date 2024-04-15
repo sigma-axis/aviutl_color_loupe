@@ -756,36 +756,24 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 	::SelectObject(hdc, tmp_fon);
 }
 
-// 未編集時などの無効状態で単色背景を描画．
+// 未編集時などの無効状態で単色背景を描画 (+通知メッセージも)．
 static inline void draw_blank(HWND hwnd)
 {
-	RECT rc; ::GetClientRect(hwnd, &rc);
-	HDC window_hdc = ::GetDC(hwnd);
+	auto toast_visible = ext_obj.is_active() && loupe_state.toast.visible;
+	WrappedDC wr{ hwnd, toast_visible };
 
-	if (ext_obj.is_active() && loupe_state.toast.visible) {
-		// needs to draw a toast. prepare a back buffer.
-		HDC hdc = ::CreateCompatibleDC(window_hdc);
-		auto tmp_bmp = ::SelectObject(hdc, ::CreateCompatibleBitmap(window_hdc, rc.right, rc.bottom));
-
-		draw_backplane(hdc, rc);
-		draw_toast(hdc, rc.right, rc.bottom);
-
-		// copy to the front buffer and delete the back buffer.
-		::BitBlt(window_hdc, 0, 0, rc.right, rc.bottom, hdc, 0, 0, SRCCOPY);
-		::DeleteObject(::SelectObject(hdc, tmp_bmp));
-		::DeleteDC(hdc);
-	}
-	else draw_backplane(window_hdc, rc);
-	::ReleaseDC(hwnd, window_hdc);
+	draw_backplane(wr.hdc(), wr.rc());
+	if (toast_visible) draw_toast(wr.hdc(), wr.wd(), wr.ht());
 }
+
 // メインの描画関数．
 static inline void draw(HWND hwnd)
 {
 	// image.is_valid() must be true here.
 	_ASSERT(image.is_valid());
 
-	int wd, ht; { RECT rc; ::GetClientRect(hwnd, &rc); wd = rc.right; ht = rc.bottom; }
-	HDC window_hdc = ::GetDC(hwnd);
+	// firstly, collect information before drawing.
+	auto [wd, ht] = WrappedDC::client_size(hwnd);
 
 	// obtain the viewbox/viewport pair of the image.
 	auto [vb, vp] = loupe_state.viewbox_viewport(image.width(), image.height(), wd, ht);
@@ -802,47 +790,35 @@ static inline void draw(HWND hwnd)
 	bool with_tip = tip.is_visible() &&
 		tip.x >= 0 && tip.x < image.width() && tip.y >= 0 && tip.y < image.height();
 
-	if (!is_partial && grid_thick == 0 && !with_tip && !loupe_state.toast.visible)
-		// most cases will fall here; whole window is covered by a single image.
-		draw_picture(window_hdc, vb, vp);
-	else {
-		// a bit complicated, so firstly draw it to the background DC and
-		// blit to foreground afterwards in order to avoid flickering.
-		HDC hdc = ::CreateCompatibleDC(window_hdc);
-		auto tmp_bmp = ::SelectObject(hdc, ::CreateCompatibleBitmap(window_hdc, wd, ht));
+	// now collected information to know whether double-buffering should help.
+	// in most cases, whole window is covered by a single image and needs not wrapping.
+	WrappedDC wr{ hwnd, wd, ht, is_partial || grid_thick > 0 || with_tip || loupe_state.toast.visible };
 
-		// some part of the window is exposed. fill the background.
-		if (is_partial) draw_backplane(hdc, { 0, 0, wd, ht });
+	// now ready for drawing...
+	// some part of the window is exposed. fill the background.
+	if (is_partial) draw_backplane(wr.hdc(), wr.rc());
 
-		// draw the main image.
-		draw_picture(hdc, vb, vp);
+	// draw the main image.
+	draw_picture(wr.hdc(), vb, vp);
 
-		// draw the grid.
-		if (grid_thick == 1) draw_grid_thin(hdc, vb, vp);
-		else if (grid_thick >= 2) draw_grid_thick(hdc, vb, vp);
+	// draw the grid.
+	if (grid_thick == 1) draw_grid_thin(wr.hdc(), vb, vp);
+	else if (grid_thick >= 2) draw_grid_thick(wr.hdc(), vb, vp);
 
-		// draw the info tip.
-		if (with_tip) {
-			auto [x, y] = loupe_state.pic2win(tip.x, tip.y);
-			x += wd / 2.0; y += ht / 2.0;
-			auto s = loupe_state.zoom.scale_ratio();
-			draw_tip(hdc, wd, ht, {
-				static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)),
-				static_cast<int>(std::ceil(x + s)), static_cast<int>(std::ceil(y + s))
-				}, tip.x, tip.y,
-				image.width(), image.height(), image.color_at(tip.x, tip.y), tip.prefer_above);
-		}
-
-		// draw the toast.
-		if (loupe_state.toast.visible) draw_toast(hdc, wd, ht);
-
-		// transfer the data to the foreground DC.
-		::BitBlt(window_hdc, 0, 0, wd, ht, hdc, 0, 0, SRCCOPY);
-		::DeleteObject(::SelectObject(hdc, tmp_bmp));
-		::DeleteDC(hdc);
+	// draw the info tip.
+	if (with_tip) {
+		auto [x, y] = loupe_state.pic2win(tip.x, tip.y);
+		x += wr.wd() / 2.0; y += wr.ht() / 2.0;
+		auto s = loupe_state.zoom.scale_ratio();
+		draw_tip(wr.hdc(), wr.wd(), wr.ht(), {
+			static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)),
+			static_cast<int>(std::ceil(x + s)), static_cast<int>(std::ceil(y + s))
+			}, tip.x, tip.y,
+			image.width(), image.height(), image.color_at(tip.x, tip.y), tip.prefer_above);
 	}
 
-	::ReleaseDC(hwnd, window_hdc);
+	// draw the toast.
+	if (loupe_state.toast.visible) draw_toast(wr.hdc(), wr.wd(), wr.ht());
 }
 
 
@@ -1823,7 +1799,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-beta3"
+#define PLUGIN_VERSION	"v2.00-beta4"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
