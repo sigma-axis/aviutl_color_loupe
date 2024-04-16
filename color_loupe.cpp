@@ -27,6 +27,7 @@ using byte = uint8_t;
 using namespace AviUtl;
 
 #include "color_abgr.hpp"
+#include "buffered_dc.hpp"
 using namespace sigma_lib::W32::GDI;
 #include "key_states.hpp"
 using namespace sigma_lib::W32::UI;
@@ -763,10 +764,10 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 static inline void draw_blank(HWND hwnd)
 {
 	auto toast_visible = ext_obj.is_active() && loupe_state.toast.visible;
-	WrappedDC wr{ hwnd, toast_visible };
+	BufferedDC bf{ hwnd, toast_visible };
 
-	draw_backplane(wr.hdc(), wr.rc());
-	if (toast_visible) draw_toast(wr.hdc(), wr.wd(), wr.ht());
+	draw_backplane(bf.hdc(), bf.rc());
+	if (toast_visible) draw_toast(bf.hdc(), bf.wd(), bf.ht());
 }
 
 // メインの描画関数．
@@ -776,7 +777,7 @@ static inline void draw(HWND hwnd)
 	_ASSERT(image.is_valid());
 
 	// firstly, collect information before drawing.
-	auto [wd, ht] = WrappedDC::client_size(hwnd);
+	auto [wd, ht] = BufferedDC::client_size(hwnd);
 
 	// obtain the viewbox/viewport pair of the image.
 	auto [vb, vp] = loupe_state.viewbox_viewport(image.width(), image.height(), wd, ht);
@@ -795,25 +796,25 @@ static inline void draw(HWND hwnd)
 
 	// now collected information to know whether double-buffering should help.
 	// in most cases, whole window is covered by a single image and needs not wrapping.
-	WrappedDC wr{ hwnd, wd, ht, is_partial || grid_thick > 0 || with_tip || loupe_state.toast.visible };
+	BufferedDC bf{ hwnd, wd, ht, is_partial || grid_thick > 0 || with_tip || loupe_state.toast.visible };
 
 	// now ready for drawing...
 	// some part of the window is exposed. fill the background.
-	if (is_partial) draw_backplane(wr.hdc(), wr.rc());
+	if (is_partial) draw_backplane(bf.hdc(), bf.rc());
 
 	// draw the main image.
-	draw_picture(wr.hdc(), vb, vp);
+	draw_picture(bf.hdc(), vb, vp);
 
 	// draw the grid.
-	if (grid_thick == 1) draw_grid_thin(wr.hdc(), vb, vp);
-	else if (grid_thick >= 2) draw_grid_thick(wr.hdc(), vb, vp);
+	if (grid_thick == 1) draw_grid_thin(bf.hdc(), vb, vp);
+	else if (grid_thick >= 2) draw_grid_thick(bf.hdc(), vb, vp);
 
 	// draw the info tip.
 	if (with_tip) {
 		auto [x, y] = loupe_state.pic2win(tip.x, tip.y);
-		x += wr.wd() / 2.0; y += wr.ht() / 2.0;
+		x += bf.wd() / 2.0; y += bf.ht() / 2.0;
 		auto s = loupe_state.zoom.scale_ratio();
-		draw_tip(wr.hdc(), wr.wd(), wr.ht(), {
+		draw_tip(bf.hdc(), bf.wd(), bf.ht(), {
 			static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)),
 			static_cast<int>(std::ceil(x + s)), static_cast<int>(std::ceil(y + s))
 			}, tip.x, tip.y,
@@ -821,7 +822,7 @@ static inline void draw(HWND hwnd)
 	}
 
 	// draw the toast.
-	if (loupe_state.toast.visible) draw_toast(wr.hdc(), wr.wd(), wr.ht());
+	if (loupe_state.toast.visible) draw_toast(bf.hdc(), bf.wd(), bf.ht());
 }
 
 
@@ -838,8 +839,8 @@ class DragState : public DragStateBase<DragCxt> {
 	friend class VoidDragState;
 protected:
 	static std::pair<double, double> win2pic(const POINT& p) {
-		RECT rc; ::GetClientRect(hwnd, &rc);
-		return loupe_state.win2pic(p.x - rc.right / 2.0, p.y - rc.bottom / 2.0);
+		auto [w, h] = BufferedDC::client_size(hwnd);
+		return loupe_state.win2pic(p.x - w / 2.0, p.y - h / 2.0);
 	}
 	static POINT win2pic_i(const POINT& p) {
 		auto [x, y] = win2pic(p);
@@ -913,6 +914,8 @@ static inline constinit class TipDrag : public DragState {
 	POINT init{};
 	LoupeState::Tip revert{};
 
+	static bool in_image(int x, int y) { return 0 <= x && x < image.width() && 0 <= y && y < image.height(); }
+
 protected:
 	bool Ready_core(context& cxt) override
 	{
@@ -941,7 +944,7 @@ protected:
 		tip.x = init.x; tip.y = init.y;
 
 		cxt.redraw_loupe = true;
-		if (hide_cursor) ::SetCursor(nullptr);
+		if (hide_cursor && in_image(tip.x, tip.y)) ::SetCursor(nullptr);
 
 		return true;
 	}
@@ -961,6 +964,8 @@ protected:
 		auto x = init.x + static_cast<int>(dx), y = init.y + static_cast<int>(dy);
 
 		if (x == tip.x && y == tip.y) return;
+		if (auto hide = in_image(x, y); hide ^ in_image(tip.x, tip.y))
+			::SetCursor(hide ? nullptr : ::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_ARROW)));
 		tip.x = x; tip.y = y;
 		cxt.redraw_loupe = true;
 	}
@@ -1339,9 +1344,9 @@ static inline bool tip_to_cursor(HWND hwnd)
 			DragState::current_drag() != &tip_drag)) return true;
 
 	POINT pt; ::GetCursorPos(&pt); ::ScreenToClient(hwnd, &pt);
-	RECT rc; ::GetClientRect(hwnd, &rc);
+	auto [w, h] = BufferedDC::client_size(hwnd);
 
-	auto [x, y] = loupe_state.win2pic(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+	auto [x, y] = loupe_state.win2pic(pt.x - w / 2.0, pt.y - h / 2.0);
 	loupe_state.tip.x = static_cast<int>(std::floor(x));
 	loupe_state.tip.y = static_cast<int>(std::floor(y));
 	return true;
@@ -1404,8 +1409,8 @@ struct Menu {
 
 		auto rel_win_center = [&] {
 			POINT pt = pt_screen; ::ScreenToClient(hwnd, &pt);
-			RECT rc; ::GetClientRect(hwnd, &rc);
-			return std::make_pair(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+			auto [w, h] = BufferedDC::client_size(hwnd);
+			return std::make_pair(pt.x - w / 2.0, pt.y - h / 2.0);
 		};
 
 		switch (id) {
@@ -1480,8 +1485,8 @@ static inline void on_command(bool& redraw_loupe, HWND hwnd, Settings::ClickActi
 	if (!ext_obj.is_active()) return;
 
 	auto rel_win_center = [&] {
-		RECT rc; ::GetClientRect(hwnd, &rc);
-		return std::make_pair(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+		auto [w, h] = BufferedDC::client_size(hwnd);
+		return std::make_pair(pt.x - w / 2.0, pt.y - h / 2.0);
 	};
 
 	switch (cmd) {
@@ -1655,8 +1660,8 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		else if (settings.tip_drag.mode == Settings::TipDrag::sticky && loupe_state.tip.visible_level > 0) {
 			// update to the tip of "sticky" mode.
 			auto pt = cursor_pos(lparam);
-			RECT rc; ::GetClientRect(hwnd, &rc);
-			auto [x, y] = loupe_state.win2pic(pt.x - rc.right / 2.0, pt.y - rc.bottom / 2.0);
+			auto [w, h] = BufferedDC::client_size(hwnd);
+			auto [x, y] = loupe_state.win2pic(pt.x - w / 2.0, pt.y - h / 2.0);
 			auto X = static_cast<int>(std::floor(x)), Y = static_cast<int>(std::floor(y));
 
 			if (!loupe_state.tip.is_visible() ||
@@ -1706,9 +1711,8 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			if (zoom.pivot != Settings::WheelZoom::center) {
 				auto pt = cursor_pos(lparam);
 				::ScreenToClient(hwnd, &pt);
-				RECT rc; ::GetClientRect(hwnd, &rc);
-				ox = pt.x - rc.right / 2.0;
-				oy = pt.y - rc.bottom / 2.0;
+				auto [w, h] = BufferedDC::client_size(hwnd);
+				ox = pt.x - w / 2.0; oy = pt.y - h / 2.0;
 			}
 
 			// then apply the zoom.

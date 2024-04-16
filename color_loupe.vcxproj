@@ -114,6 +114,7 @@
     <None Include="color_loupe.def" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="buffered_dc.hpp" />
     <ClInclude Include="color_abgr.hpp" />
     <ClInclude Include="dialogs.hpp" />
     <ClInclude Include="dialogs_basics.hpp" />

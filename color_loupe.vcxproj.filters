@@ -55,6 +55,9 @@
     <ClInclude Include="dialogs_basics.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="buffered_dc.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="color_loupe.rc">
