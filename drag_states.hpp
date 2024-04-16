@@ -14,6 +14,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 #include <cstdint>
 #include <cmath>
+#include <concepts>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -81,7 +82,7 @@ namespace sigma_lib::W32::custom::mouse
 		constexpr static int16_t timespan_min = 0, timespan_max = invalid_val;
 	};
 
-	template<class DragContext>
+	template<class Context>
 	class DragStateBase {
 		inline static constinit DragStateBase* current = nullptr;
 
@@ -139,7 +140,7 @@ namespace sigma_lib::W32::custom::mouse
 		}
 
 	public:
-		using context = DragContext;
+		using context = Context;
 
 	protected:
 		static inline constinit HWND hwnd{ nullptr };
@@ -302,7 +303,7 @@ namespace sigma_lib::W32::custom::mouse
 			return false;
 		}
 
-		template<class DragState>
+		template<std::derived_from<DragStateBase> DragState = DragStateBase>
 		static DragState* current_drag() { return dynamic_cast<DragState*>(current); }
 
 		// make sure derived classes finalize their fields.
@@ -310,6 +311,7 @@ namespace sigma_lib::W32::custom::mouse
 	};
 
 	template<class DragBase>
+		requires(std::derived_from<DragBase, DragStateBase<class DragBase::context>>)
 	class VoidDrag : public DragBase {
 		using context = DragBase::context;
 	protected:

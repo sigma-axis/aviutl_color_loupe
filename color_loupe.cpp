@@ -159,9 +159,10 @@ static inline constinit struct LoupeState {
 		wr = std::floor(0.5 + wr + 0.5 * client_w);
 		wb = std::floor(0.5 + wb + 0.5 * client_h);
 
+		constexpr auto i = [](double x) { return static_cast<int>(x); };
 		return {
-			{ static_cast<int>(pl), static_cast<int>(pt), static_cast<int>(pr), static_cast<int>(pb) },
-			{ static_cast<int>(wl), static_cast<int>(wt), static_cast<int>(wr), static_cast<int>(wb) },
+			{ i(pl), i(pt), i(pr), i(pb) },
+			{ i(wl), i(wt), i(wr), i(wb) },
 		};
 	}
 
@@ -365,7 +366,7 @@ static constinit Handle<HFONT, [](wchar_t const(*name)[], int8_t const* size) {
 	tip_font{ &settings.tip_drag.font_name, &settings.tip_drag.font_size },
 	toast_font{ &settings.toast.font_name, &settings.toast.font_size };
 
-static constinit Handle<HMENU, []{ return ::LoadMenuW(this_dll, MAKEINTRESOURCEW(IDR_MENU_CXT)); }, ::DestroyMenu>
+static constinit Handle<HMENU, [] { return ::LoadMenuW(this_dll, MAKEINTRESOURCEW(IDR_MENU_CXT)); }, ::DestroyMenu>
 	cxt_menu{};
 
 
@@ -684,6 +685,8 @@ static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
 // 通知メッセージトースト描画．
 static inline void draw_toast(HDC hdc, int wd, int ht)
 {
+	_ASSERT(ext_obj.is_active());
+
 	constexpr auto& toast = loupe_state.toast;
 	constexpr int pad_x = 6, pad_y = 4, // トースト矩形とテキストの間の空白．
 		margin = 4; // ウィンドウ端との最低保証空白．
@@ -852,14 +855,13 @@ public:
 	static void InitiateDrag(HWND hwnd, const POINT& drag_start, context& cxt);
 	static Settings::WheelZoom CurrentWheelZoom() {
 		auto* drag = current_drag<DragState>();
-		if (drag == nullptr) return settings.zoom.wheel;
-		return drag->WheelZoom();
+		return drag != nullptr ? drag->WheelZoom() : settings.zoom.wheel;
 	}
 };
 
 static inline constinit class LoupeDrag : public DragState {
-	double revert_x{}, revert_y{}, curr_x{}, curr_y{};
 	int revert_zoom{};
+	double revert_x{}, revert_y{}, curr_x{}, curr_y{};
 	constexpr static auto& pos = loupe_state.position;
 
 protected:
@@ -1059,8 +1061,8 @@ protected:
 	void Start_core(context& cxt) override
 	{
 		const auto& op = settings.exedit_drag;
-		auto shift = key_fake(VK_SHIFT, op.fake_shift, [&]{ return (cxt.wparam & MK_SHIFT) != 0; }),
-			alt = key_fake(VK_MENU, op.fake_alt, []{ return ::GetKeyState(VK_MENU) < 0; });
+		auto shift = key_fake(VK_SHIFT, op.fake_shift, [&] { return (cxt.wparam & MK_SHIFT) != 0; }),
+			alt = key_fake(VK_MENU, op.fake_alt, [] { return ::GetKeyState(VK_MENU) < 0; });
 		fake_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseDown, last, MK_LBUTTON);
 	}
@@ -1080,12 +1082,15 @@ protected:
 	{
 		const auto& op = settings.exedit_drag;
 		auto shift = key_fake(VK_SHIFT, op.fake_shift, [&] { return (cxt.wparam & MK_SHIFT) != 0; }),
-			alt = key_fake(VK_MENU, op.fake_alt, []{ return ::GetKeyState(VK_MENU) < 0; });
+			alt = key_fake(VK_MENU, op.fake_alt, [] { return ::GetKeyState(VK_MENU) < 0; });
 		fake_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseUp, last, 0);
 	}
 	void Cancel_core(context& cxt) override
 	{
+		// may not revert back to previous state
+		// like when Alt is pressed or released during the drag,
+		// but sometimes it works well and can be helpful, so leave this feature as is.
 		cxt.wparam = 0;
 		ForceKeyState shift{ VK_SHIFT, false }, alt{ VK_MENU, false };
 		send_message(cxt, FilterMessage::MainMouseMove, revert, MK_LBUTTON);
@@ -1331,7 +1336,7 @@ static inline bool tip_to_cursor(HWND hwnd)
 {
 	if (!loupe_state.tip.is_visible()
 		|| (settings.tip_drag.mode != Settings::TipDrag::sticky &&
-			DragState::current_drag<DragState>() != &tip_drag)) return true;
+			DragState::current_drag() != &tip_drag)) return true;
 
 	POINT pt; ::GetCursorPos(&pt); ::ScreenToClient(hwnd, &pt);
 	RECT rc; ::GetClientRect(hwnd, &rc);
@@ -1752,7 +1757,8 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 			if (DragState::Cancel(cxt)) break;
 		}
 		else if (wparam == VK_F10 && (lparam & KF_ALTDOWN) == 0 && message == WM_SYSKEYDOWN
-			&& ::GetKeyState(VK_SHIFT) < 0 && ::GetKeyState(VK_CONTROL) >= 0) {
+			&& ::GetKeyState(VK_SHIFT) < 0 && ::GetKeyState(VK_CONTROL) >= 0
+			&& !DragState::is_dragging(cxt)) {
 			// Shift + F10:
 			// hard-coded shortcut key that shows up the context menu.
 			cxt.redraw_loupe = Menu::popup_menu(hwnd, false);
@@ -1799,7 +1805,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-beta4"
+#define PLUGIN_VERSION	"v2.00-beta5"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
