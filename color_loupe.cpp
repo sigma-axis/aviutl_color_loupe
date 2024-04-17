@@ -1184,8 +1184,8 @@ static inline bool centralize_point(double win_ox, double win_oy)
 
 	// move the target point to the specified position.
 	auto [x, y] = loupe_state.win2pic(win_ox, win_oy);
-	loupe_state.position.x = std::clamp<double>(x, 0, image.width());
-	loupe_state.position.y = std::clamp<double>(y, 0, image.height());
+	loupe_state.position.x = std::floor(std::clamp<double>(x, 0, image.width() - 1)) + 0.5;
+	loupe_state.position.y = std::floor(std::clamp<double>(y, 0, image.height() - 1)) + 0.5;
 	return true;
 }
 static inline bool toggle_follow_cursor()
@@ -1501,6 +1501,12 @@ static inline void on_command(bool& redraw_loupe, HWND hwnd, Settings::ClickActi
 		redraw_loupe |= copy_color_code(x, y);
 		break;
 	}
+	case ca::copy_coord:
+	{
+		auto [x, y] = rel_win_center();
+		redraw_loupe |= copy_coordinate(x, y);
+		break;
+	}
 	case ca::toggle_follow_cursor:	redraw_loupe |= toggle_follow_cursor();	break;
 	case ca::centralize:			redraw_loupe |= centralize();			break;
 	case ca::toggle_grid:			redraw_loupe |= toggle_grid();			break;
@@ -1515,10 +1521,10 @@ static inline void on_command(bool& redraw_loupe, HWND hwnd, Settings::ClickActi
 		redraw_loupe |= apply_zoom(loupe_state.zoom.zoom_level + steps, x, y) && tip_to_cursor(hwnd);
 		break;
 	}
-	case ca::copy_coord:
+	case ca::bring_center:
 	{
 		auto [x, y] = rel_win_center();
-		redraw_loupe |= copy_coordinate(x, y);
+		redraw_loupe |= centralize_point(x, y);
 		break;
 	}
 

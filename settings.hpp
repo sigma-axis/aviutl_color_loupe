@@ -214,14 +214,13 @@ inline constinit struct Settings {
 			toggle_grid				= 6,
 			zoom_step_down			= 7,
 			zoom_step_up			= 8,
+			bring_center			= 9,
 			settings				= 201,
 			context_menu			= 202,
-			// TODO: add the following new commands.
-			// bring_center (move the clicked point to the center of the loupe)
 		};
 		struct Button {
 			Command click, dblclk;
-			bool cancels_drag; // TODO: functionality not implemented yet.
+			bool cancels_drag;
 		}	left{ none, swap_zoom_level, true },
 			right{ context_menu, copy_color_code, true },
 			middle{ toggle_follow_cursor, none, true },

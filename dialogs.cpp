@@ -196,6 +196,7 @@ public:
 			{ IDS_CMD_TOGGLE_GRID, 		Command::toggle_grid			},
 			{ IDS_CMD_ZOOM_STEP_UP, 	Command::zoom_step_up			},
 			{ IDS_CMD_ZOOM_STEP_DOWN, 	Command::zoom_step_down			},
+			{ IDS_CMD_BRING_CENTER, 	Command::bring_center			},
 			{ IDS_CMD_CXT_MENU, 		Command::context_menu			},
 			{ IDS_CMD_OPTIONS_DLG, 		Command::settings				},
 	};
@@ -225,6 +226,7 @@ private:
 		case Command::toggle_grid:			id = IDS_DESC_CMD_GRID;			break;
 		case Command::zoom_step_up:			id = IDS_DESC_CMD_ZOOM_UP;		break;
 		case Command::zoom_step_down:		id = IDS_DESC_CMD_ZOOM_DOWN;	break;
+		case Command::bring_center:			id = IDS_DESC_CMD_BRING_CENTER;	break;
 		case Command::context_menu:			id = IDS_DESC_CMD_CXT_MENU;		break;
 		case Command::settings:				id = IDS_DESC_CMD_SETTINGS;		break;
 		default: return;
