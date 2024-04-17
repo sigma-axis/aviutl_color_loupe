@@ -34,11 +34,11 @@ using namespace sigma_lib::W32::UI;
 #include "drag_states.hpp"
 using namespace sigma_lib::W32::custom::mouse;
 
-#include "resource.h"
-HMODULE constinit this_dll = nullptr;
-
+#include "resource.hpp"
 #include "settings.hpp"
 #include "dialogs.hpp"
+
+namespace resources { using namespace sigma_lib::W32::resources; }
 
 ////////////////////////////////
 // ルーペ状態の定義
@@ -189,8 +189,8 @@ static inline constinit struct LoupeState {
 		tip = { .x = w2, .y = h2, .visible_level = 0 };
 	}
 } loupe_state;
-static_assert(LoupeState::Zoom::zoom_level_max == Settings::Zoom::zoom_level_max_max);
-static_assert(LoupeState::Zoom::zoom_level_min == Settings::Zoom::zoom_level_min_min);
+static_assert(LoupeState::Zoom::zoom_level_max == Settings::Zoom::level_max_max);
+static_assert(LoupeState::Zoom::zoom_level_min == Settings::Zoom::level_min_min);
 
 // define a function to export.
 std::tuple<int, int> Settings::HelperFunctions::ScaleFromZoomLevel(int zoom_level) {
@@ -432,12 +432,9 @@ public:
 		if (hwnd == nullptr) return;
 
 		// load / format the message string from resource.
-		if constexpr (sizeof...(args) > 0) {
-			const wchar_t* ptr;
-			::LoadStringW(this_dll, id, reinterpret_cast<wchar_t*>(&ptr), 0);
-			std::swprintf(toast.message, std::size(toast.message), ptr, args...);
-		}
-		else ::LoadStringW(this_dll, id, toast.message, std::size(toast.message));
+		if constexpr (sizeof...(args) > 0)
+			std::swprintf(toast.message, std::size(toast.message), resources::string::get(id), args...);
+		else resources::string::copy(id, toast.message);
 		toast.visible = true;
 
 		// turn a timer on.
@@ -873,7 +870,9 @@ protected:
 		revert_x = curr_x = pos.x;
 		revert_y = curr_y = pos.y;
 		revert_zoom = loupe_state.zoom.zoom_level;
-		::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_HAND)));
+
+		using namespace resources::cursor;
+		::SetCursor(get(hand));
 		return true;
 	}
 	void Delta_core(const POINT& curr, context& cxt) override
@@ -964,8 +963,12 @@ protected:
 		auto x = init.x + static_cast<int>(dx), y = init.y + static_cast<int>(dy);
 
 		if (x == tip.x && y == tip.y) return;
-		if (auto hide = in_image(x, y); hide ^ in_image(tip.x, tip.y))
-			::SetCursor(hide ? nullptr : ::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_ARROW)));
+
+		if (auto hide = in_image(x, y); hide ^ in_image(tip.x, tip.y)) {
+			using namespace resources::cursor;
+			::SetCursor(hide ? nullptr : get(arrow));
+		}
+
 		tip.x = x; tip.y = y;
 		cxt.redraw_loupe = true;
 	}
@@ -1016,11 +1019,11 @@ static inline constinit class ExEditDrag : public DragState {
 	static ForceKeyState key_fake(short vkey, Settings::ExEditDrag::KeyFake fake, auto&& curr) {
 		switch (fake) {
 			using enum Settings::ExEditDrag::KeyFake;
-		case flat: return { ForceKeyState::vkey_invalid, false };
-		case off: return { vkey, false };
-		case on: return { vkey, true };
+		case flat:	return { ForceKeyState::vkey_invalid, false };
+		case off:	return { vkey, false };
+		case on:	return { vkey, true };
 		case invert:
-		default: return { vkey, !curr() };
+		default:	return { vkey, !curr() };
 		}
 	}
 	static void fake_wparam(const Settings::ExEditDrag& op, WPARAM& wp) {
@@ -1035,17 +1038,17 @@ static inline constinit class ExEditDrag : public DragState {
 
 public:
 	static void init(FilterPlugin* this_fp) {
-			if (exedit_fp != nullptr) return;
+		if (exedit_fp != nullptr) return;
 
-			SysInfo si; this_fp->exfunc->get_sys_info(nullptr, &si);
-			for (int i = 0; i < si.filter_n; i++) {
-				auto that_fp = this_fp->exfunc->get_filterp(i);
-				if (that_fp->name != nullptr &&
-					0 == std::strcmp(that_fp->name, name_exedit)) {
-					exedit_fp = that_fp;
-					return;
-				}
+		SysInfo si; this_fp->exfunc->get_sys_info(nullptr, &si);
+		for (int i = 0; i < si.filter_n; i++) {
+			auto that_fp = this_fp->exfunc->get_filterp(i);
+			if (that_fp->name != nullptr &&
+				0 == std::strcmp(that_fp->name, name_exedit)) {
+				exedit_fp = that_fp;
+				return;
 			}
+		}
 	}
 	static bool is_valid() { return exedit_fp != nullptr; }
 
@@ -1058,7 +1061,9 @@ protected:
 		if (0 <= last.x && last.x < image.width() &&
 			0 <= last.y && last.y < image.height()) {
 			revert = last;
-			::SetCursor(::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(IDC_SIZEALL)));
+
+			using namespace resources::cursor;
+			::SetCursor(get(sizeall));
 			return true;
 		}
 		return false;
@@ -1109,8 +1114,6 @@ protected:
 
 // placeholder drag. might be used as a fallback.
 static inline constinit class VoidDragState : public VoidDrag<DragState> {
-	DragState* surrogate = nullptr;
-
 protected:
 	// let resemble the "click-or-not" behavior to the origin of the fallback.
 	DragInvalidRange InvalidRange() override {
@@ -1118,14 +1121,7 @@ protected:
 	}
 
 public:
-	using context = DragState::context;
-	using DragState::Start;
-	bool Start(HWND hwnd, const POINT& drag_start, context& cxt, DragState* surrogate) {
-		this->surrogate = surrogate;
-		auto ret = Start(hwnd, drag_start, cxt);
-		this->surrogate = nullptr;
-		return ret;
-	}
+	DragState* surrogate = nullptr;
 } void_drag;
 
 inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context& cxt)
@@ -1151,19 +1147,19 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 		alt = ::GetKeyState(VK_MENU) < 0;
 
 	constexpr DragState* drags[] = { &loupe_drag, &tip_drag, &exedit_drag };
-	DragState* chosen = nullptr;
+	void_drag.surrogate = nullptr;
 	for (auto* drag : drags) {
 		// check the button/key-combination condition.
 		if (drag->KeysActivate().match(btn, ctrl, shift, alt)) {
 			// then type-specific condition.
 			if (drag->Start(hwnd, drag_start, cxt)) return;
-			chosen = drag;
+			void_drag.surrogate = drag;
 			break;
 		}
 	}
 
 	// initiate the "placeholder drag".
-	void_drag.Start(hwnd, drag_start, cxt, chosen);
+	void_drag.Start(hwnd, drag_start, cxt);
 }
 
 
@@ -1214,8 +1210,8 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 {
 	// ignore if the zoom level is identical.
 	new_level = std::clamp(new_level,
-		std::max<int>(settings.zoom.zoom_level_min, LoupeState::Zoom::zoom_level_min),
-		std::min<int>(settings.zoom.zoom_level_max, LoupeState::Zoom::zoom_level_max));
+		std::max<int>(settings.zoom.level_min, LoupeState::Zoom::zoom_level_min),
+		std::min<int>(settings.zoom.level_max, LoupeState::Zoom::zoom_level_max));
 	if (new_level == loupe_state.zoom.zoom_level) return false;
 
 	// apply.
@@ -1809,7 +1805,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00-beta5"
+#define PLUGIN_VERSION	"v2.00-pre1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

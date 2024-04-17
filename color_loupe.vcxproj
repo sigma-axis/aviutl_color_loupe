@@ -121,6 +121,7 @@
     <ClInclude Include="drag_states.hpp" />
     <ClInclude Include="key_states.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="resource.hpp" />
     <ClInclude Include="settings.hpp" />
   </ItemGroup>
   <ItemGroup>

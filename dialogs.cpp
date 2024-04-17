@@ -19,13 +19,14 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #include <Windows.h>
 #include <CommCtrl.h>
 
-#include "resource.h"
-extern HMODULE this_dll;
+#include "resource.hpp"
 
 #include "dialogs_basics.hpp"
+#include "dialogs.hpp"
 #include "settings.hpp"
 
 using namespace dialogs::basics;
+namespace res_str { using namespace sigma_lib::W32::resources::string; }
 
 ////////////////////////////////
 // Commonly used patterns.
@@ -36,16 +37,10 @@ struct CtrlData {
 	TData data;
 };
 
-static inline const wchar_t* get_resource_string(uint32_t id) {
-	const wchar_t* ret;
-	::LoadStringW(this_dll, id, reinterpret_cast<wchar_t*>(&ret), 0);
-	return ret;
-}
-
 template<class TData, size_t N>
 static inline void init_combo_items(HWND combo, TData curr, const CtrlData<TData>(&items)[N]) {
 	constexpr auto add_item = [](HWND combo, const auto& item) {
-		WPARAM idx = ::SendMessageW(combo, CB_ADDSTRING, {}, reinterpret_cast<LPARAM>(get_resource_string(item.desc)));
+		WPARAM idx = ::SendMessageW(combo, CB_ADDSTRING, {}, reinterpret_cast<LPARAM>(res_str::get(item.desc)));
 		::SendMessageW(combo, CB_SETITEMDATA, idx, static_cast<LPARAM>(item.data));
 		return idx;
 	};
@@ -67,7 +62,7 @@ static inline data get_combo_data(HWND combo) {
 template<class TData, size_t N>
 static inline void init_list_items(HWND list, TData curr, const CtrlData<TData>(&items)[N]) {
 	constexpr auto add_item = [](HWND list, const auto& item) {
-		WPARAM idx = ::SendMessageW(list, LB_ADDSTRING, {}, reinterpret_cast<LPARAM>(get_resource_string(item.desc)));
+		WPARAM idx = ::SendMessageW(list, LB_ADDSTRING, {}, reinterpret_cast<LPARAM>(res_str::get(item.desc)));
 		::SendMessageW(list, LB_SETITEMDATA, idx, static_cast<LPARAM>(item.data));
 		return idx;
 	};
@@ -220,7 +215,7 @@ private:
 		default: return;
 		}
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(id)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(id)));
 	}
 
 protected:
@@ -315,7 +310,7 @@ protected:
 		}
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_DRAG_KEYCOND)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_DRAG_KEYCOND)));
 
 		return false;
 	}
@@ -396,7 +391,7 @@ protected:
 		}
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_DRAG_RANGE)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_DRAG_RANGE)));
 
 		return false;
 	}
@@ -456,7 +451,7 @@ protected:
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), wheel.pivot, pivot_combo_data);
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), wheel.num_steps, WheelZoom::num_steps_min, WheelZoom::num_steps_max);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_ZOOM_STEPS)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_ZOOM_STEPS)));
 
 		return false;
 	}
@@ -598,7 +593,7 @@ private:
 		default: return;
 		}
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(id)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(id)));
 	}
 
 protected:
@@ -740,7 +735,7 @@ protected:
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), drag.fake_alt, combo_data);
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_EXEDIT_FAKE)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_EXEDIT_FAKE)));
 
 		return false;
 	}
@@ -780,10 +775,10 @@ public:
 
 private:
 	void on_change_min(int8_t data_new) {
-		zoom.zoom_level_min = std::clamp(data_new, Zoom::zoom_level_min_min, Zoom::zoom_level_min_max);
+		zoom.level_min = std::clamp(data_new, Zoom::level_min_min, Zoom::level_min_max);
 	}
 	void on_change_max(int8_t data_new) {
-		zoom.zoom_level_max = std::clamp(data_new, Zoom::zoom_level_max_min, Zoom::zoom_level_max_max);
+		zoom.level_max = std::clamp(data_new, Zoom::level_max_min, Zoom::level_max_max);
 	}
 	void set_text(int id, int level) {
 		auto [n, d] = Settings::HelperFunctions::ScaleFromZoomLevel(level);
@@ -801,15 +796,15 @@ protected:
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
 		auto slider = ::GetDlgItem(hwnd, IDC_SLIDER1);
-		init_slider(slider, zoom.zoom_level_min,
-			Zoom::zoom_level_min_min, Zoom::zoom_level_min_max, 1, 4);
+		init_slider(slider, zoom.level_min,
+			Zoom::level_min_min, Zoom::level_min_max, 1, 4);
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(0));
-		set_text(IDC_EDIT1, zoom.zoom_level_min);
+		set_text(IDC_EDIT1, zoom.level_min);
 		slider = ::GetDlgItem(hwnd, IDC_SLIDER2);
-		init_slider(slider, zoom.zoom_level_max,
-			Zoom::zoom_level_max_min, Zoom::zoom_level_max_max, 1, 4);
+		init_slider(slider, zoom.level_max,
+			Zoom::level_max_min, Zoom::level_max_max, 1, 4);
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(0));
-		set_text(IDC_EDIT2, zoom.zoom_level_max);
+		set_text(IDC_EDIT2, zoom.level_max);
 		return false;
 	}
 
@@ -821,21 +816,21 @@ protected:
 			switch (auto code = 0xffff & wparam) {
 			case TB_ENDTRACK:
 				// make sure minimum is less than maximum or equals.
-				if (zoom.zoom_level_min > zoom.zoom_level_max) {
+				if (zoom.level_min > zoom.level_max) {
 					int id_slider, id_edit;
 					switch (::GetDlgCtrlID(ctrl)) {
 					case IDC_SLIDER2:
 						id_slider = IDC_SLIDER1; id_edit = IDC_EDIT1;
-						zoom.zoom_level_min = zoom.zoom_level_max;
+						zoom.level_min = zoom.level_max;
 						break;
 					default:
 						id_slider = IDC_SLIDER2; id_edit = IDC_EDIT2;
-						zoom.zoom_level_max = zoom.zoom_level_min;
+						zoom.level_max = zoom.level_min;
 						break;
 					}
 					auto sc = suppress_callback();
-					set_slider_value(::GetDlgItem(hwnd, id_slider), zoom.zoom_level_min);
-					set_text(id_edit, zoom.zoom_level_min);
+					set_slider_value(::GetDlgItem(hwnd, id_slider), zoom.level_min);
+					set_text(id_edit, zoom.level_min);
 					return true;
 				}
 				break;
@@ -848,11 +843,11 @@ protected:
 				switch (::GetDlgCtrlID(ctrl)) {
 				case IDC_SLIDER1:
 					on_change_min(get_slider_value(ctrl));
-					set_text(IDC_EDIT1, zoom.zoom_level_min);
+					set_text(IDC_EDIT1, zoom.level_min);
 					return true;
 				case IDC_SLIDER2:
 					on_change_max(get_slider_value(ctrl));
-					set_text(IDC_EDIT2, zoom.zoom_level_max);
+					set_text(IDC_EDIT2, zoom.level_max);
 					return true;
 				}
 				break;
@@ -991,7 +986,7 @@ protected:
 ////////////////////////////////
 class grid_options : public dialog_base {
 	using Grid = Settings::Grid;
-	constexpr static auto zoom_level_max = Settings::Zoom::zoom_level_max_max;
+	constexpr static auto zoom_level_max = Settings::Zoom::level_max_max;
 public:
 	Grid& grid;
 	grid_options(Grid& grid) : grid{ grid } {}
@@ -1031,7 +1026,7 @@ protected:
 		::SendMessageW(slider, TBM_SETTIC, 0, static_cast<LPARAM>(zoom_level_max));
 		set_text(IDC_EDIT2, grid.least_zoom_thick);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_GRID_KINDS)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_GRID_KINDS)));
 		return false;
 	}
 
@@ -1136,7 +1131,7 @@ protected:
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), pivot, wheel_zoom::pivot_combo_data);
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), steps, ClickActions::step_zoom_num_steps_min, ClickActions::step_zoom_num_steps_max);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_ZOOM_STEPS)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_ZOOM_STEPS)));
 
 		return false;
 	}
@@ -1197,7 +1192,7 @@ protected:
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), color, combo_data);
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), coord, tip_drag_format::coord_combo_data);
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT1), WM_SETTEXT,
-			{}, reinterpret_cast<LPARAM>(get_resource_string(IDS_DESC_CLIPBOARD_FMT)));
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_CLIPBOARD_FMT)));
 
 		return false;
 	}

@@ -12,16 +12,9 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 #pragma once
 
-#include <cstdint>
-
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-
-#include "resource.h"
-extern HMODULE this_dll;
-
-#include "settings.hpp"
 
 namespace dialogs
 {

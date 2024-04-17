@@ -131,10 +131,10 @@ inline constinit struct Settings {
 			.num_steps = 1,
 			.pivot = WheelZoom::center,
 		};
-		int8_t zoom_level_min = zoom_level_min_min,
-			zoom_level_max = zoom_level_max_max;
-		constexpr static int8_t zoom_level_min_min = -13, zoom_level_min_max = 20;
-		constexpr static int8_t zoom_level_max_min = -13, zoom_level_max_max = 20;
+		int8_t level_min = level_min_min,
+			level_max = level_max_max;
+		constexpr static int8_t level_min_min = -13, level_min_max = 20;
+		constexpr static int8_t level_max_min = -13, level_max_max = 20;
 	} zoom;
 
 	struct ColorScheme {
@@ -191,7 +191,7 @@ inline constinit struct Settings {
 		int8_t least_zoom_thick = 12;
 		constexpr static int8_t
 			least_zoom_thin_min	= 6, // x 3.00
-			least_zoom_thin_max	= Zoom::zoom_level_max_max + 1,
+			least_zoom_thin_max	= Zoom::level_max_max + 1,
 			least_zoom_thick_min	= least_zoom_thin_min,
 			least_zoom_thick_max	= least_zoom_thin_max;
 
@@ -290,8 +290,8 @@ inline constinit struct Settings {
 		load_bool(zoom, wheel.enabled);
 		load_bool(zoom, wheel.reversed);
 		load_enum(zoom, wheel.pivot);
-		load_int(zoom, zoom_level_min);
-		load_int(zoom, zoom_level_max);
+		load_int(zoom, level_min);
+		load_int(zoom, level_max);
 
 		load_color(color, chrome);
 		load_color(color, back_top);
@@ -398,8 +398,8 @@ inline constinit struct Settings {
 		save_bool(zoom, wheel.enabled);
 		save_bool(zoom, wheel.reversed);
 		save_dec(zoom, wheel.pivot);
-		save_dec(zoom, zoom_level_min);
-		save_dec(zoom, zoom_level_max);
+		save_dec(zoom, level_min);
+		save_dec(zoom, level_max);
 
 		//save_color(color, chrome);
 		//save_color(color, back_top);
@@ -454,6 +454,7 @@ inline constinit struct Settings {
 
 		// lines commented out are setting items that threre're no means to change at runtime.
 
+#undef save_drag
 #undef save_bool
 #undef save_color
 #undef save_dec
