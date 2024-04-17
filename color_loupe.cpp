@@ -859,7 +859,8 @@ public:
 
 static inline constinit class LoupeDrag : public DragState {
 	int revert_zoom{};
-	double revert_x{}, revert_y{}, curr_x{}, curr_y{};
+	double revert_x{}, revert_y{},
+		prev_x{}, prev_y{}, curr_x{}, curr_y{};
 	constexpr static auto& pos = loupe_state.position;
 
 protected:
@@ -867,8 +868,8 @@ protected:
 	{
 		if (!image.is_valid()) return false;
 
-		revert_x = curr_x = pos.x;
-		revert_y = curr_y = pos.y;
+		revert_x = curr_x = prev_x = pos.x;
+		revert_y = curr_y = prev_y = pos.y;
 		revert_zoom = loupe_state.zoom.zoom_level;
 
 		using namespace resources::cursor;
@@ -881,7 +882,8 @@ protected:
 		if (dx == 0 && dy == 0) return;
 
 		auto s = loupe_state.zoom.scale_ratio_inv();
-		curr_x -= s * dx; curr_y -= s * dy;
+		curr_x += (pos.x - prev_x) - s * dx;
+		curr_y += (pos.y - prev_y) - s * dy;
 
 		std::tie(dx, dy) = snap_rail(curr_x - revert_x, curr_y - revert_y,
 			(cxt.wparam & MK_SHIFT) != 0 ? settings.loupe_drag.rail_mode : RailMode::none,
@@ -893,7 +895,7 @@ protected:
 		py = std::clamp<double>(py + dy, 0, image.height());
 
 		if (px == pos.x && py == pos.y) return;
-		pos.x = px; pos.y = py;
+		pos.x = prev_x = px; pos.y = prev_y = py;
 		cxt.redraw_loupe = true;
 	}
 	void Cancel_core(context& cxt) override
@@ -1152,14 +1154,14 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 		// check the button/key-combination condition.
 		if (drag->KeysActivate().match(btn, ctrl, shift, alt)) {
 			// then type-specific condition.
-			if (drag->Start(hwnd, drag_start, cxt)) return;
+			if (drag->Start(hwnd, btn, drag_start, cxt)) return;
 			void_drag.surrogate = drag;
 			break;
 		}
 	}
 
 	// initiate the "placeholder drag".
-	void_drag.Start(hwnd, drag_start, cxt);
+	void_drag.Start(hwnd, btn, drag_start, cxt);
 }
 
 
@@ -1382,7 +1384,7 @@ struct Menu {
 		// prepare the context menu.
 		ena(IDM_CXT_PT_COPY_COLOR,			by_mouse && image.is_valid());
 		ena(IDM_CXT_PT_COPY_COORD,			by_mouse && image.is_valid());
-		ena(IDM_CXT_PT_MOVE_CENTER,			by_mouse && image.is_valid());
+		ena(IDM_CXT_PT_BRING_CENTER,		by_mouse && image.is_valid());
 		chk(IDM_CXT_FOLLOW_CURSOR,			loupe_state.position.follow_cursor);
 		chk(IDM_CXT_SHOW_GRID,				loupe_state.grid.visible);
 		ena(IDM_CXT_SWAP_ZOOM,				image.is_valid());
@@ -1422,7 +1424,7 @@ struct Menu {
 				return copy_coordinate(x, y);
 			}
 			break;
-		case IDM_CXT_PT_MOVE_CENTER:
+		case IDM_CXT_PT_BRING_CENTER:
 			if (by_mouse) {
 				auto [x, y] = rel_win_center();
 				return centralize_point(x, y);
@@ -1510,7 +1512,7 @@ static inline void on_command(bool& redraw_loupe, HWND hwnd, Settings::ClickActi
 		double x = 0, y = 0;
 		if (settings.commands.step_zoom_pivot != Settings::WheelZoom::center)
 			std::tie(x, y) = rel_win_center();
-		redraw_loupe |= apply_zoom(loupe_state.zoom.zoom_level + steps, x, y);
+		redraw_loupe |= apply_zoom(loupe_state.zoom.zoom_level + steps, x, y) && tip_to_cursor(hwnd);
 		break;
 	}
 	case ca::copy_coord:
@@ -1608,43 +1610,39 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		break;
 
 		// UI handlers for mouse messages.
-	case WM_LBUTTONDOWN:
-	case WM_RBUTTONDOWN:
-	case WM_MBUTTONDOWN:
+		{
+			Settings::ClickActions::Button* cfg;
+	case WM_LBUTTONDOWN: cfg = &settings.commands.left;		goto on_mouse_down;
+	case WM_RBUTTONDOWN: cfg = &settings.commands.right;	goto on_mouse_down;
+	case WM_MBUTTONDOWN: cfg = &settings.commands.middle;	goto on_mouse_down;
 	case WM_XBUTTONDOWN:
-		// cancel an existing drag operation.
-		if (!DragState::Cancel(cxt))
+		cfg = (wparam >> 16) == XBUTTON1 ? &settings.commands.x1 : &settings.commands.x2;
+
+	on_mouse_down:
+		// cancel an existing drag operation if specified so.
+		if (cfg->cancels_drag ? !DragState::Cancel(cxt) : !DragState::is_dragging(cxt))
 			// if nothing is canceled, try to initiate a new.
 			DragState::InitiateDrag(hwnd, cursor_pos(lparam), cxt);
 		break;
-
-	case WM_LBUTTONUP:
-	case WM_RBUTTONUP:
-	case WM_MBUTTONUP:
-	case WM_XBUTTONUP:
-		// finish dragging.
-		if (!DragState::End(cxt)) {
-			// now recognized as a single click.
-
-			// find the assinged command.
-			auto& btn = [&]() -> auto& {
-				switch (message) {
-				case WM_LBUTTONUP: return settings.commands.left;
-				case WM_RBUTTONUP: return settings.commands.right;
-				case WM_MBUTTONUP: return settings.commands.middle;
-				case WM_XBUTTONUP:
-				default:
-					if ((wparam >> 16) == XBUTTON1)
-						return settings.commands.x1;
-					else
-						return settings.commands.x2;
-				}
-			}();
-
-			// handle that command.
-			on_command(cxt.redraw_loupe, hwnd, btn.click, cursor_pos(lparam));
 		}
+		{
+			Settings::ClickActions::Button* cfg;
+			MouseButton btn;
+	case WM_LBUTTONUP: cfg = &settings.commands.left,	btn = MouseButton::left;	goto on_mouse_up;
+	case WM_RBUTTONUP: cfg = &settings.commands.right,	btn = MouseButton::right;	goto on_mouse_up;
+	case WM_MBUTTONUP: cfg = &settings.commands.middle,	btn = MouseButton::middle;	goto on_mouse_up;
+	case WM_XBUTTONUP:
+		(wparam >> 16) == XBUTTON1 ?
+			(cfg = &settings.commands.x1, btn = MouseButton::x1) :
+			(cfg = &settings.commands.x2, btn = MouseButton::x2);
+
+	on_mouse_up:
+		// finish dragging if button corresponds.
+		if (DragState::End(btn, cxt).is_click)
+			// now that it's recognized as a single click, handle the assigned command.
+			on_command(cxt.redraw_loupe, hwnd, cfg->click, cursor_pos(lparam));
 		break;
+		}
 	case WM_CAPTURECHANGED:
 		// abort dragging.
 		DragState::Abort(cxt);
@@ -1716,20 +1714,19 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		}
 		break;
 
-	// option commands.
-	case WM_LBUTTONDBLCLK:
-		on_command(cxt.redraw_loupe, hwnd, settings.commands.left.dblclk, cursor_pos(lparam));
-		break;
-	case WM_RBUTTONDBLCLK:
-		on_command(cxt.redraw_loupe, hwnd, settings.commands.right.dblclk, cursor_pos(lparam));
-		break;
-	case WM_MBUTTONDBLCLK:
-		on_command(cxt.redraw_loupe, hwnd, settings.commands.middle.dblclk, cursor_pos(lparam));
-		break;
+		// option commands.
+		{
+			Settings::ClickActions::Button* btn;
+	case WM_LBUTTONDBLCLK: btn = &settings.commands.left;	goto on_mouse_dblclk;
+	case WM_RBUTTONDBLCLK: btn = &settings.commands.right;	goto on_mouse_dblclk;
+	case WM_MBUTTONDBLCLK: btn = &settings.commands.middle;	goto on_mouse_dblclk;
 	case WM_XBUTTONDBLCLK:
-		on_command(cxt.redraw_loupe, hwnd, ((wparam >> 16) == XBUTTON1 ?
-			settings.commands.x1 : settings.commands.x2).dblclk, cursor_pos(lparam));
+		btn = (wparam >> 16) == XBUTTON1 ? &settings.commands.x1 : &settings.commands.x2;
+
+	on_mouse_dblclk:
+		on_command(cxt.redraw_loupe, hwnd, btn->dblclk, cursor_pos(lparam));
 		break;
+		}
 
 	case FilterMessage::MainMouseMove:
 		// mouse move on the main window while wheel is down moves the loupe position.
@@ -1805,7 +1802,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.00"
+#define PLUGIN_VERSION	"v2.10-beta1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

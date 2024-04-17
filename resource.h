@@ -130,7 +130,7 @@
 #define IDM_CXT_SWAP_ZOOM               40003
 #define IDM_CXT_CENTRALIZE              40004
 #define IDM_CXT_PT_COPY_COLOR           40005
-#define IDM_CXT_PT_MOVE_CENTER          40006
+#define IDM_CXT_PT_BRING_CENTER         40006
 #define IDM_CXT_PT_COPY_COORD           40007
 #define IDM_CXT_TIP_MODE_FRAIL          40008
 #define IDM_CXT_TIP_MODE_STATIONARY     40009

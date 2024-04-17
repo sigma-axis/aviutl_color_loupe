@@ -145,6 +145,7 @@ namespace sigma_lib::W32::custom::mouse
 	protected:
 		static inline constinit HWND hwnd{ nullptr };
 		static inline constinit POINT drag_start{}, last_point{}; // window coordinates.
+		static inline constinit MouseButton button = MouseButton::none;
 
 		// should return true if ready to initiate the drag.
 		virtual bool Ready_core(context& cxt) = 0;
@@ -191,13 +192,14 @@ namespace sigma_lib::W32::custom::mouse
 		}
 
 	public:
-		// returns true if the dragging is made ready.
-		bool Start(HWND hwnd, const POINT& drag_start, context& cxt)
+		// returns true if the dragging is made ready. button must not be MouseButton::none.
+		bool Start(HWND hwnd, MouseButton button, const POINT& drag_start, context& cxt)
 		{
 			if (is_dragging(cxt)) return false;
 
 			DragStateBase::hwnd = hwnd;
 			DragStateBase::drag_start = last_point = drag_start;
+			DragStateBase::button = button;
 
 			if (Ready_core(cxt)) {
 				invalid_range = InvalidRange();
@@ -217,6 +219,7 @@ namespace sigma_lib::W32::custom::mouse
 			}
 			else {
 				DragStateBase::hwnd = nullptr;
+				DragStateBase::button = MouseButton::none;
 				return false;
 			}
 		}
@@ -255,25 +258,29 @@ namespace sigma_lib::W32::custom::mouse
 			current->Unready_core(cxt, was_validated);
 
 			hwnd = nullptr;
+			button = MouseButton::none;
 			current = nullptr;
 
 			::ReleaseCapture();
 			return true;
 		}
-		// returns false if the dragging operation should be recognized as a single click.
-		static bool End(context& cxt)
+		// returns whether the button-up should be recognized as a single click.
+		// actually ends dragging only if the button used for dragging matches up_button.
+		static struct { bool is_click; } End(MouseButton up_button, context& cxt)
 		{
-			if (!is_dragging(cxt)) return true; // dragging must have been canceled.
+			if (!is_dragging(cxt)) return { false }; // dragging must have been canceled.
+			if (up_button != button) return { true }; // different button, maybe a single click.
 
 			kill_timer();
 			if (was_validated) current->End_core(cxt);
 			current->Unready_core(cxt, was_validated);
 
 			hwnd = nullptr;
+			button = MouseButton::none;
 			current = nullptr;
 
 			::ReleaseCapture();
-			return was_validated;
+			return { !was_validated };
 		}
 		// returns true if there sure was a dragging state that is now aborted.
 		static bool Abort(context& cxt)
@@ -286,6 +293,7 @@ namespace sigma_lib::W32::custom::mouse
 
 			auto tmp = hwnd;
 			hwnd = nullptr;
+			button = MouseButton::none;
 			current = nullptr;
 
 			if (tmp != nullptr && ::GetCapture() == tmp)

@@ -110,7 +110,7 @@ static inline int get_slider_value(HWND slider) {
 
 
 ////////////////////////////////
-// クリック操作選択．
+// クリック動作の設定．
 ////////////////////////////////
 class click_action : public dialog_base {
 	using Button = Settings::ClickActions::Button;
@@ -124,6 +124,7 @@ public:
 private:
 	void on_change_single(Command data_new) { btn.click = data_new; }
 	void on_change_double(Command data_new) { btn.dblclk = data_new; }
+	void on_change_cancel(bool data_new) { btn.cancels_drag = data_new; }
 
 protected:
 	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_CLICK_ACTION; }
@@ -146,6 +147,9 @@ protected:
 			init_combo_items(combo, curr, commands_combo_data);
 		}
 
+		::SendMessageW(::GetDlgItem(hwnd, IDC_CHECK1), BM_SETCHECK,
+			btn.cancels_drag ? BST_CHECKED : BST_UNCHECKED, {});
+
 		return false;
 	}
 
@@ -165,6 +169,16 @@ protected:
 					return true;
 				}
 				break;
+			case BN_CLICKED:
+			{
+				bool checked = ::SendMessageW(ctrl, BM_GETCHECK, {}, {}) == BST_CHECKED;
+				switch (id) {
+				case IDC_CHECK1:
+					on_change_cancel(checked);
+					return true;
+				}
+				break;
+			}
 			}
 			break;
 		}
@@ -193,9 +207,10 @@ public:
 ////////////////////////////////
 class click_action_desc : public dialog_base {
 	using Command = Settings::ClickActions::Command;
+	Command init;
 
 public:
-	click_action_desc() {}
+	click_action_desc(Command init = Command::swap_zoom_level) : init{ init } {}
 
 private:
 	void on_change_command(Command data_new) {
@@ -225,9 +240,8 @@ protected:
 	{
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-		constexpr auto curr = Command::swap_zoom_level;
-		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), curr, click_action::commands_combo_data);
-		on_change_command(curr);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), init, click_action::commands_combo_data);
+		on_change_command(init);
 
 		return false;
 	}
@@ -1321,7 +1335,7 @@ private:
 		click_pages:
 			return new vscroll_form{
 				new click_action{ *btn },
-				new click_action_desc{},
+				new click_action_desc{ btn->click },
 			};
 			}
 		case tab_kind::commands:

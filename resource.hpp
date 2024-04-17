@@ -53,25 +53,19 @@ namespace sigma_lib::W32::resources
 			sizens		= reinterpret_cast<uint32_t>(IDC_SIZENS),
 			sizeall		= reinterpret_cast<uint32_t>(IDC_SIZEALL),
 			no			= reinterpret_cast<uint32_t>(IDC_NO),
-#if(WINVER >= 0x0500)
 			hand		= reinterpret_cast<uint32_t>(IDC_HAND),
-#endif /* WINVER >= 0x0500 */
 			appstarting	= reinterpret_cast<uint32_t>(IDC_APPSTARTING),
-#if(WINVER >= 0x0400)
 			help		= reinterpret_cast<uint32_t>(IDC_HELP),
-#endif /* WINVER >= 0x0400 */
-
-#if(WINVER >= 0x0606)
 			pin			= reinterpret_cast<uint32_t>(IDC_PIN),
 			person		= reinterpret_cast<uint32_t>(IDC_PERSON),
-#endif /* WINVER >= 0x0606 */
 		};
 		inline HCURSOR get(ID id) {
-			return ::LoadCursorW(nullptr, reinterpret_cast<PCWSTR>(id));
+			return reinterpret_cast<HCURSOR>(::LoadImageW(nullptr,
+				reinterpret_cast<PCWSTR>(id), IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE | LR_SHARED));
 		}
 		inline HCURSOR load(uint32_t resource_id) {
-			return ::LoadCursorW(this_dll, MAKEINTRESOURCEW(resource_id));
+			return reinterpret_cast<HCURSOR>(::LoadImageW(this_dll,
+				MAKEINTRESOURCEW(resource_id), IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE | LR_SHARED));
 		}
-		constexpr HCURSOR null = nullptr;
 	}
 }

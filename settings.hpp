@@ -217,7 +217,7 @@ inline constinit struct Settings {
 			settings				= 201,
 			context_menu			= 202,
 			// TODO: add the following new commands.
-			// centralize_pt (move the clicked point to the center of the loupe)
+			// bring_center (move the clicked point to the center of the loupe)
 		};
 		struct Button {
 			Command click, dblclk;
@@ -432,19 +432,19 @@ inline constinit struct Settings {
 
 		save_dec(commands, left.click);
 		save_dec(commands, left.dblclk);
-		//save_bool(commands, left.cancels_drag);
+		save_bool(commands, left.cancels_drag);
 		save_dec(commands, right.click);
 		save_dec(commands, right.dblclk);
-		//save_bool(commands, right.cancels_drag);
+		save_bool(commands, right.cancels_drag);
 		save_dec(commands, middle.click);
 		save_dec(commands, middle.dblclk);
-		//save_bool(commands, middle.cancels_drag);
+		save_bool(commands, middle.cancels_drag);
 		save_dec(commands, x1.click);
 		save_dec(commands, x1.dblclk);
-		//save_bool(commands, x1.cancels_drag);
+		save_bool(commands, x1.cancels_drag);
 		save_dec(commands, x2.click);
 		save_dec(commands, x2.dblclk);
-		//save_bool(commands, x2.cancels_drag);
+		save_bool(commands, x2.cancels_drag);
 
 		save_dec(commands, swap_zoom_level_pivot);
 		save_dec(commands, step_zoom_pivot);
