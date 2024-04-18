@@ -572,39 +572,60 @@ static inline void draw_grid_thick(HDC hdc, const RECT& vb, const RECT& vp)
 }
 
 // 背景グラデーション & 枠付きの丸角矩形を描画．
-static inline void draw_round_rect(HDC hdc, const RECT& rc, int radius, int thick, Color back_top, Color back_btm, Color chrome)
+static inline void draw_round_rect(HDC hdc, const RECT& rc, int diameter, int thick, Color back_top, Color back_btm, Color chrome)
 {
-	auto hrgn = ::CreateRoundRectRgn(rc.left, rc.top,
-		rc.right, rc.bottom, radius, radius);
-	::SelectClipRgn(hdc, hrgn);
-	{
-		TRIVERTEX vertices[]{
-			{ rc.left,  rc.top,    static_cast<COLOR16>(back_top.R << 8), static_cast<COLOR16>(back_top.G << 8), static_cast<COLOR16>(back_top.B << 8) },
-			{ rc.right, rc.bottom, static_cast<COLOR16>(back_btm.R << 8), static_cast<COLOR16>(back_btm.G << 8), static_cast<COLOR16>(back_btm.B << 8) } };
-		constexpr GRADIENT_RECT rcs{ 0,1 };
-		::GdiGradientFill(hdc, vertices, 2, const_cast<GRADIENT_RECT*>(&rcs), 1, GRADIENT_FILL_RECT_V);
-	}
-	::SelectClipRgn(hdc, nullptr);
-
+	auto br = ::SelectObject(hdc, ::GetStockObject(DC_BRUSH)),
+		pen = ::SelectObject(hdc, ::GetStockObject(NULL_PEN));
 	if (thick > 0) {
 		::SetDCBrushColor(hdc, chrome);
-		::FrameRgn(hdc, hrgn, static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)), thick, thick);
+		::RoundRect(hdc, rc.left - thick, rc.top - thick, rc.right + thick, rc.bottom + thick,
+			diameter + 2 * thick, diameter + 2 * thick);
 	}
-	::DeleteObject(hrgn);
+
+	if (back_top == back_btm) {
+		::SetDCBrushColor(hdc, back_top);
+		::RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, diameter, diameter);
+	}
+	else {
+		auto w = rc.right - rc.left, h = rc.bottom - rc.top;
+
+		// draw the gradation to another buffer.
+		auto grad = ::CreateCompatibleDC(hdc);
+		auto bmp = ::SelectObject(grad, ::CreateCompatibleBitmap(hdc, w, h));
+
+		constexpr GRADIENT_RECT rcs{ 0,1 };
+		TRIVERTEX vertices[]{
+			{ 0, 0, static_cast<COLOR16>(back_top.R << 8), static_cast<COLOR16>(back_top.G << 8), static_cast<COLOR16>(back_top.B << 8) },
+			{ w, h, static_cast<COLOR16>(back_btm.R << 8), static_cast<COLOR16>(back_btm.G << 8), static_cast<COLOR16>(back_btm.B << 8) }
+		};
+		::GdiGradientFill(grad, vertices, 2, const_cast<GRADIENT_RECT*>(&rcs), 1, GRADIENT_FILL_RECT_V);
+
+		// use XOR two times and black brush to clip off the rounded corner.
+		::SetDCBrushColor(hdc, 0); // black
+		::BitBlt(hdc, rc.left, rc.top, w, h, grad, 0, 0, SRCINVERT);
+		::RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, diameter, diameter);
+		::BitBlt(hdc, rc.left, rc.top, w, h, grad, 0, 0, SRCINVERT);
+
+		// delete the buffer.
+		::DeleteObject(::SelectObject(grad, bmp));
+		::DeleteDC(grad);
+	}
+	::SelectObject(hdc, br); ::SelectObject(hdc, pen);
 }
 // 色・座標表示ボックス描画．
-static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
-	int pic_x, int pic_y, int pic_w, int pic_h, Color col, bool& prefer_above)
+static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
+	Color pixel_color, const POINT& pix, const SIZE& screen, bool& prefer_above,
+	const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme)
 {
 	RECT box_big = box;
-	box_big.left -= settings.tip_drag.box_inflate; box_big.right += settings.tip_drag.box_inflate;
-	box_big.top -= settings.tip_drag.box_inflate; box_big.bottom += settings.tip_drag.box_inflate;
+	box_big.left -= tip_drag.box_inflate; box_big.right += tip_drag.box_inflate;
+	box_big.top -= tip_drag.box_inflate; box_big.bottom += tip_drag.box_inflate;
 
 	// draw the "pixel box".
-	::SetDCBrushColor(hdc, col);
+	::SetDCBrushColor(hdc, pixel_color);
 	::FillRect(hdc, &box_big, static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
 	::FrameRect(hdc, &box_big, static_cast<HBRUSH>(::GetStockObject(
-		col.luma() <= Color::max_luma / 2 ? WHITE_BRUSH : BLACK_BRUSH)));
+		pixel_color.luma() <= Color::max_luma / 2 ? WHITE_BRUSH : BLACK_BRUSH)));
 
 	// prepare text.
 	constexpr int pad_x = 10, pad_y = 3, // ツールチップ矩形とテキストの間の空白．
@@ -616,32 +637,34 @@ static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
 		std::max(std::size(L"#RRGGBB"), std::size(L"RGB(000,000,000)")) + 1 +
 		std::max(std::size(L"X:1234, Y:1234"), std::size(L"X:-1234.5, Y:-1234.5")))];
 	int tip_strlen = 0;
-	switch (settings.tip_drag.color_fmt) {
+	switch (tip_drag.color_fmt) {
 		using enum Settings::ColorFormat;
 	case dec3x3:
-		tip_strlen += std::swprintf(tip_str, std::size(tip_str), L"RGB(%3u,%3u,%3u)\n", col.R, col.G, col.B);
+		tip_strlen += std::swprintf(tip_str, std::size(tip_str),
+			L"RGB(%3u,%3u,%3u)\n", pixel_color.R, pixel_color.G, pixel_color.B);
 		break;
 	case hexdec6:
 	default:
-		tip_strlen += std::swprintf(tip_str, std::size(tip_str), L"#%06X\n", col.to_formattable());
+		tip_strlen += std::swprintf(tip_str, std::size(tip_str),
+			L"#%06X\n", pixel_color.to_formattable());
 		break;
 	}
-	switch (settings.tip_drag.coord_fmt) {
+	switch (tip_drag.coord_fmt) {
 		using enum Settings::CoordFormat;
 	case origin_center:
 	{
 		wchar_t fmt[] = L"X:%7.1f, Y:%7.1f";
-		double x = pic_x - pic_w / 2.0, y = pic_y - pic_h / 2.0;
-		if ((pic_w & 1) == 0) fmt[3] = L'5', fmt[5] = L'0'; // no half-integer.
-		if (pic_w < 2000) fmt[3]--; // trim by 1 digit, it's rarely necessary.
-		if ((pic_h & 1) == 0) fmt[12] = L'5', fmt[14] = L'0';
-		if (pic_h < 2000) fmt[12]--;
+		double x = pix.x - screen.cx / 2.0, y = pix.y - screen.cy / 2.0;
+		if ((screen.cx & 1) == 0) fmt[3] = L'5', fmt[5] = L'0'; // no half-integer.
+		if (screen.cx < 2000) fmt[3]--; // trim by 1 digit, it's rarely necessary.
+		if ((screen.cy & 1) == 0) fmt[12] = L'5', fmt[14] = L'0';
+		if (screen.cy < 2000) fmt[12]--;
 		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, fmt, x, y);
 		break;
 	}
 	case origin_top_left:
 	default:
-		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, L"X:%4d, Y:%4d", pic_x, pic_y);
+		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, L"X:%4d, Y:%4d", pix.x, pix.y);
 		break;
 	}
 
@@ -651,8 +674,8 @@ static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
 	::DrawTextW(hdc, tip_str, tip_strlen, &rc_txt, DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP | DT_CALCRECT);
 	{
 		const int w = rc_txt.right - rc_txt.left, h = rc_txt.bottom - rc_txt.top,
-			x_min = margin + pad_x, x_max = wd - (w + pad_x + margin),
-			y_min = margin + pad_y, y_max = ht - (h + pad_y + margin);
+			x_min = margin + pad_x, x_max = canvas.cx - (w + pad_x + margin),
+			y_min = margin + pad_y, y_max = canvas.cy - (h + pad_y + margin);
 
 		int x = (box.left + box.right) / 2 - w / 2;
 
@@ -671,32 +694,32 @@ static inline void draw_tip(HDC hdc, int wd, int ht, const RECT& box,
 	}
 
 	// draw the round rect and its frame.
-	draw_round_rect(hdc, rc_frm, settings.tip_drag.chrome_radius, settings.tip_drag.chrome_thick,
-		settings.color.back_top, settings.color.back_bottom, settings.color.chrome);
+	draw_round_rect(hdc, rc_frm, tip_drag.chrome_radius, tip_drag.chrome_thick,
+		color_scheme.back_top, color_scheme.back_bottom, color_scheme.chrome);
 
 	// then draw the text.
-	::SetTextColor(hdc, settings.color.text);
+	::SetTextColor(hdc, color_scheme.text);
 	::SetBkMode(hdc, TRANSPARENT);
 	::DrawTextW(hdc, tip_str, tip_strlen, &rc_txt, DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP);
 	::SelectObject(hdc, tmp_fon);
 }
 // 通知メッセージトースト描画．
-static inline void draw_toast(HDC hdc, int wd, int ht)
+static inline void draw_toast(HDC hdc, const SIZE& canvas, const wchar_t* message,
+	const Settings::Toast& toast, const Settings::ColorScheme& color_scheme)
 {
 	_ASSERT(ext_obj.is_active());
 
-	constexpr auto& toast = loupe_state.toast;
 	constexpr int pad_x = 6, pad_y = 4, // トースト矩形とテキストの間の空白．
 		margin = 4; // ウィンドウ端との最低保証空白．
 
 	// measure the text size.
 	auto tmp_fon = ::SelectObject(hdc, toast_font);
 	RECT rc_txt{}, rc_frm{};
-	::DrawTextW(hdc, toast.message, -1, &rc_txt, DT_NOPREFIX | DT_NOCLIP | DT_CALCRECT);
+	::DrawTextW(hdc, message, -1, &rc_txt, DT_NOPREFIX | DT_NOCLIP | DT_CALCRECT);
 
 	// align horizontally.
 	auto l = rc_txt.right - rc_txt.left;
-	switch (settings.toast.placement) {
+	switch (toast.placement) {
 		using enum Settings::Toast::Placement;
 	case top_left:
 	case left:
@@ -706,13 +729,13 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 	case top_right:
 	case right:
 	case bottom_right:
-		rc_frm.right = wd - margin;
+		rc_frm.right = canvas.cx - margin;
 		rc_txt.right = rc_frm.right - pad_x;
 		rc_txt.left = rc_txt.right - l;
 		rc_frm.left = rc_txt.left - pad_x;
 		break;
 	default:
-		rc_frm.left = wd / 2 - l / 2 - pad_x;
+		rc_frm.left = canvas.cx / 2 - l / 2 - pad_x;
 	from_left:
 		rc_txt.left = rc_frm.left + pad_x;
 		rc_txt.right = rc_txt.left + l;
@@ -722,7 +745,7 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 
 	// then vertically.
 	l = rc_txt.bottom - rc_txt.top;
-	switch (settings.toast.placement) {
+	switch (toast.placement) {
 		using enum Settings::Toast::Placement;
 	case top_left:
 	case top:
@@ -732,13 +755,13 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 	case bottom_left:
 	case bottom:
 	case bottom_right:
-		rc_frm.bottom = ht - margin;
+		rc_frm.bottom = canvas.cy - margin;
 		rc_txt.bottom = rc_frm.bottom - pad_y;
 		rc_txt.top = rc_txt.bottom - l;
 		rc_frm.top = rc_txt.top - pad_y;
 		break;
 	default:
-		rc_frm.top = ht / 2 - l / 2 - pad_y;
+		rc_frm.top = canvas.cy / 2 - l / 2 - pad_y;
 	from_top:
 		rc_txt.top = rc_frm.top + pad_y;
 		rc_txt.bottom = rc_txt.top + l;
@@ -747,13 +770,13 @@ static inline void draw_toast(HDC hdc, int wd, int ht)
 	}
 
 	// draw the round rect and its frame.
-	draw_round_rect(hdc, rc_frm, settings.toast.chrome_radius, settings.toast.chrome_thick,
-		settings.color.back_top, settings.color.back_bottom, settings.color.chrome);
+	draw_round_rect(hdc, rc_frm, toast.chrome_radius, toast.chrome_thick,
+		color_scheme.back_top, color_scheme.back_bottom, color_scheme.chrome);
 
 	// then draw the text.
-	::SetTextColor(hdc, settings.color.text);
+	::SetTextColor(hdc, color_scheme.text);
 	::SetBkMode(hdc, TRANSPARENT);
-	::DrawTextW(hdc, toast.message, -1, &rc_txt, DT_NOPREFIX | DT_NOCLIP);
+	::DrawTextW(hdc, message, -1, &rc_txt, DT_NOPREFIX | DT_NOCLIP);
 	::SelectObject(hdc, tmp_fon);
 }
 
@@ -764,7 +787,8 @@ static inline void draw_blank(HWND hwnd)
 	BufferedDC bf{ hwnd, toast_visible };
 
 	draw_backplane(bf.hdc(), bf.rc());
-	if (toast_visible) draw_toast(bf.hdc(), bf.wd(), bf.ht());
+	if (toast_visible) draw_toast(bf.hdc(), bf.sz(),
+		loupe_state.toast.message, settings.toast, settings.color);
 }
 
 // メインの描画関数．
@@ -811,15 +835,16 @@ static inline void draw(HWND hwnd)
 		auto [x, y] = loupe_state.pic2win(tip.x, tip.y);
 		x += bf.wd() / 2.0; y += bf.ht() / 2.0;
 		auto s = loupe_state.zoom.scale_ratio();
-		draw_tip(bf.hdc(), bf.wd(), bf.ht(), {
+		draw_tip(bf.hdc(), bf.sz(), {
 			static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)),
 			static_cast<int>(std::ceil(x + s)), static_cast<int>(std::ceil(y + s))
-			}, tip.x, tip.y,
-			image.width(), image.height(), image.color_at(tip.x, tip.y), tip.prefer_above);
+			}, image.color_at(tip.x, tip.y), { tip.x, tip.y }, { image.width(), image.height() },
+			tip.prefer_above, settings.tip_drag, settings.color);
 	}
 
 	// draw the toast.
-	if (loupe_state.toast.visible) draw_toast(bf.hdc(), bf.wd(), bf.ht());
+	if (loupe_state.toast.visible) draw_toast(bf.hdc(), bf.sz(),
+		loupe_state.toast.message, settings.toast, settings.color);
 }
 
 
@@ -1808,7 +1833,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.10-beta1"
+#define PLUGIN_VERSION	"v2.10-beta2"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

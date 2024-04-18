@@ -102,7 +102,7 @@ inline constinit struct Settings {
 
 		int8_t box_inflate		= 4;
 		int8_t chrome_thick		= 1;
-		int8_t chrome_radius	= 3;
+		int8_t chrome_radius	= 3; // NOTE: is actually diameter.
 
 		constexpr static int8_t font_size_min		= 4, font_size_max		= 72;
 		constexpr static int8_t box_inflate_min		= 0, box_inflate_max	= 16;
@@ -178,7 +178,7 @@ inline constinit struct Settings {
 		int8_t font_size = 18;
 
 		int8_t chrome_thick = 1;
-		int8_t chrome_radius = 3;
+		int8_t chrome_radius = 3; // NOTE: is actually diameter.
 
 		constexpr static int	duration_min		= 200,	duration_max		= 60'000;
 		constexpr static int8_t	font_size_min		= 4,	font_size_max		= 72;

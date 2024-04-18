@@ -12,6 +12,8 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 #pragma once
 
+#include <bit>
+
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -64,6 +66,7 @@ namespace sigma_lib::W32::GDI
 
 		// returns the reference to the client rect.
 		constexpr RECT const& rc() const { return rect; }
+		constexpr SIZE const& sz() const { return std::bit_cast<SIZE const*>(&rect)[1]; }
 		constexpr bool is_wrapped() const { return back_dc != nullptr; }
 
 		static SIZE client_size(HWND hwnd) {
