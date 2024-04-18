@@ -111,6 +111,12 @@ static inline int get_slider_value(HWND slider) {
 	return static_cast<int>(::SendMessageW(slider, TBM_GETPOS, 0, 0));
 }
 
+struct PrvMsg {
+	enum : uint32_t {
+		UpdateView = WM_USER + 64,
+	};
+};
+
 
 ////////////////////////////////
 // クリック動作の設定．
@@ -669,11 +675,17 @@ class tip_drag_format : public dialog_base {
 
 public:
 	Settings::TipDrag& drag;
-	tip_drag_format(Settings::TipDrag& drag) : drag{ drag } {}
+	dialog_base* const update_target;
+	tip_drag_format(Settings::TipDrag& drag, dialog_base* update_target)
+		: drag{ drag }, update_target{ update_target } {}
 
 private:
 	void on_change_color(ColorFormat data_new) { drag.color_fmt = data_new; }
 	void on_change_coord(CoordFormat data_new) { drag.coord_fmt = data_new; }
+	void update_view() {
+		if (update_target != nullptr && update_target->hwnd != nullptr)
+			::SendMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
+	}
 
 protected:
 	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_DRAG_TIP_FMT; }
@@ -703,9 +715,11 @@ protected:
 				switch (id) {
 				case IDC_COMBO1:
 					on_change_color(get_combo_data<ColorFormat>(ctrl));
+					update_view();
 					return true;
 				case IDC_COMBO2:
 					on_change_coord(get_combo_data<CoordFormat>(ctrl));
+					update_view();
 					return true;
 				}
 				break;
@@ -783,11 +797,13 @@ private:
 			::SetDCBrushColor(cvs.hdc(), sample.color);
 			::FillRect(cvs.hdc(), &cvs.rc(), reinterpret_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
 
+			auto font = dialogs::ExtFunc::CreateUprightFont(drag.font_name, drag.font_size);
 			auto pos = sample.pos(cvs.sz());
 			dialogs::ExtFunc::DrawTip(cvs.hdc(), cvs.sz(),
 				{ pos.x - 2, pos.y - 2, pos.x + 2, pos.y + 2 }, sample.color,
 				{ sample.pic_x, sample.pic_y }, { 1920, 1080 },
-				sample.prefer_above, drag, color_scheme);
+				sample.prefer_above, font, drag, color_scheme);
+			::DeleteObject(font);
 
 			::BitBlt(hdc, rc.left, rc.top, cvs.wd(), cvs.ht(), cvs.hdc(), 0, 0, SRCCOPY);
 		}
@@ -845,7 +861,7 @@ protected:
 			update_view();
 			return true;
 
-		case WM_LBUTTONDOWN:
+		case PrvMsg::UpdateView:
 			update_view();
 			break;
 		}
@@ -1020,7 +1036,9 @@ class toast_functions : public dialog_base {
 
 public:
 	Toast& toast;
-	toast_functions(Toast& toast) : toast{ toast } {}
+	dialog_base* const update_target;
+	toast_functions(Toast& toast, dialog_base* update_target)
+		: toast{ toast }, update_target{ update_target } {}
 
 private:
 	void on_change_notify_scale(bool data_new) { toast.notify_scale = data_new; }
@@ -1032,6 +1050,10 @@ private:
 		toast.duration = std::clamp(data_new, Toast::duration_min, Toast::duration_max);
 	}
 	void on_change_scale_format(ScaleFormat data_new) { toast.scale_format = data_new; }
+	void update_view() {
+		if (update_target != nullptr && update_target->hwnd != nullptr)
+			::SendMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
+	}
 
 protected:
 	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_TOAST; }
@@ -1094,6 +1116,7 @@ protected:
 				case IDC_RADIO4: case IDC_RADIO5: case IDC_RADIO6:
 				case IDC_RADIO7: case IDC_RADIO8: case IDC_RADIO9:
 					on_change_placement(static_cast<Placement>(::GetWindowLongW(ctrl, GWL_USERDATA)));
+					update_view();
 					return true;
 				case IDC_CHECK1:
 					on_change_notify_scale(checked);
@@ -1173,9 +1196,12 @@ private:
 			sample.resize_and_overwrite(::SendMessageW(edit, WM_GETTEXTLENGTH, 0, 0),
 				[edit](wchar_t* p, size_t count) { return ::SendMessageW(edit, WM_GETTEXT, count + 1, reinterpret_cast<LPARAM>(p)); });
 
+			auto font = dialogs::ExtFunc::CreateUprightFont(toast.font_name, toast.font_size);
 			dialogs::ExtFunc::DrawToast(cvs.hdc(), cvs.sz(),
 				sample.size() <= 1 ? res_str::get(IDS_DLG_TOAST_SAMPLE) : sample.data(),
-				toast, color_scheme);
+				nullptr, toast, color_scheme);
+			::DeleteObject(font);
+
 			::BitBlt(hdc, rc.left, rc.top, cvs.wd(), cvs.ht(), cvs.hdc(), 0, 0, SRCCOPY);
 		}
 		::ReleaseDC(hwnd, hdc);
@@ -1227,7 +1253,7 @@ protected:
 			update_view();
 			return true;
 
-		case WM_LBUTTONDOWN:
+		case PrvMsg::UpdateView:
 			update_view();
 			break;
 		}
@@ -1527,6 +1553,7 @@ private:
 	std::map<tab_kind, std::unique_ptr<vscroll_form>> pages{};
 	vscroll_form* create_page(tab_kind kind)
 	{
+		dialog_base* update_target = nullptr;
 		switch (kind) {
 		case tab_kind::drag_move_loupe:
 			return new vscroll_form{
@@ -1536,13 +1563,14 @@ private:
 				new loupe_drag{ curr.loupe_drag },
 			};
 		case tab_kind::drag_show_tip:
+			update_target = new tip_drag_metrics{ curr.tip_drag, curr.color };
 			return new vscroll_form{
 				new drag_keys{ curr.tip_drag.keys },
 				new drag_range{ curr.tip_drag.range },
 				new wheel_zoom{ curr.tip_drag.wheel },
-				new tip_drag_metrics{ curr.tip_drag, curr.color },
+				update_target,
 				new tip_drag{ curr.tip_drag },
-				new tip_drag_format{ curr.tip_drag },
+				new tip_drag_format{ curr.tip_drag, update_target },
 				// TODO: fonts?
 			};
 		case tab_kind::drag_exedit:
@@ -1600,9 +1628,10 @@ private:
 			};
 
 		case tab_kind::toast:
+			update_target = new toast_metrics{ curr.toast, curr.color };
 			return new vscroll_form{
-				new toast_functions{ curr.toast },
-				new toast_metrics{ curr.toast, curr.color },
+				new toast_functions{ curr.toast, update_target },
+				update_target,
 				// TODO: fonts?
 			};
 

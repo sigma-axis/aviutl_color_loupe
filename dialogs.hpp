@@ -31,9 +31,9 @@ namespace dialogs
 		std::tuple<int, int> ScaleFromZoomLevel(int zoom_level);
 		void DrawTip(HDC hdc, const SIZE& canvas, const RECT& box,
 			Color pixel_color, const POINT& pix, const SIZE& screen, bool& prefer_above,
-			const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme);
+			HFONT font, const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme);
 		void DrawToast(HDC hdc, const SIZE& canvas, const wchar_t* message,
-			const Settings::Toast& toast, const Settings::ColorScheme& color_scheme);
-
+			HFONT font, const Settings::Toast& toast, const Settings::ColorScheme& color_scheme);
+		HFONT CreateUprightFont(wchar_t const* name, int size);
 	}
 }

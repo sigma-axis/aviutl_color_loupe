@@ -357,18 +357,23 @@ public:
 	constexpr Handle(Handle&& that) : data{ that.data } { that.handle() = nullptr; }
 	~Handle() { free(); }
 };
-
-static constinit Handle<HFONT, [](wchar_t const(*name)[], int8_t const* size) {
+static HFONT create_font(const wchar_t* name, int size) {
 	return ::CreateFontW(
-		*size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET,
+		size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET,
 		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-		DEFAULT_PITCH | FF_DONTCARE, *name);
-}, ::DeleteObject, wchar_t const(*)[], int8_t const*>
+		DEFAULT_PITCH | FF_DONTCARE, name);
+}
+static constinit Handle<HFONT,
+	[](wchar_t const(*name)[], int8_t const* size) { return create_font(*name, *size); },
+	::DeleteObject, wchar_t const(*)[], int8_t const*>
 	tip_font{ &settings.tip_drag.font_name, &settings.tip_drag.font_size },
 	toast_font{ &settings.toast.font_name, &settings.toast.font_size };
 
 static constinit Handle<HMENU, [] { return ::LoadMenuW(this_dll, MAKEINTRESOURCEW(IDR_MENU_CXT)); }, ::DestroyMenu>
 	cxt_menu{};
+
+// export a function.
+HFONT dialogs::ExtFunc::CreateUprightFont(wchar_t const* name, int size) { return create_font(name, size); }
 
 
 ////////////////////////////////
@@ -610,7 +615,7 @@ static inline void draw_round_rect(HDC hdc, const RECT& rc, int corner, int thic
 // 色・座標表示ボックス描画．
 static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
 	Color pixel_color, const POINT& pix, const SIZE& screen, bool& prefer_above,
-	const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme)
+	HFONT font, const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme)
 {
 	RECT box_big = box;
 	box_big.left -= tip_drag.box_inflate; box_big.right += tip_drag.box_inflate;
@@ -661,7 +666,7 @@ static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
 	}
 
 	// measure the text size.
-	auto tmp_fon = ::SelectObject(hdc, tip_font);
+	auto tmp_fon = ::SelectObject(hdc, font);
 	RECT rc_txt{}, rc_frm;
 	::DrawTextW(hdc, tip_str, tip_strlen, &rc_txt, DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP | DT_CALCRECT);
 	{
@@ -703,12 +708,12 @@ static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
 }
 // 通知メッセージトースト描画．
 static inline void draw_toast(HDC hdc, const SIZE& canvas, const wchar_t* message,
-	const Settings::Toast& toast, const Settings::ColorScheme& color_scheme)
+	HFONT font, const Settings::Toast& toast, const Settings::ColorScheme& color_scheme)
 {
 	_ASSERT(ext_obj.is_active());
 
 	// measure the text size.
-	auto tmp_fon = ::SelectObject(hdc, toast_font);
+	auto tmp_fon = ::SelectObject(hdc, font);
 	RECT rc_txt{}, rc_frm{};
 	::DrawTextW(hdc, message, -1, &rc_txt, DT_NOPREFIX | DT_NOCLIP | DT_CALCRECT);
 
@@ -783,7 +788,7 @@ static inline void draw_blank(HWND hwnd)
 
 	draw_backplane(bf.hdc(), bf.rc());
 	if (toast_visible) draw_toast(bf.hdc(), bf.sz(),
-		loupe_state.toast.message, settings.toast, settings.color);
+		loupe_state.toast.message, toast_font, settings.toast, settings.color);
 }
 
 // メインの描画関数．
@@ -834,23 +839,23 @@ static inline void draw(HWND hwnd)
 			static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)),
 			static_cast<int>(std::ceil(x + s)), static_cast<int>(std::ceil(y + s))
 			}, image.color_at(tip.x, tip.y), { tip.x, tip.y }, { image.width(), image.height() },
-			tip.prefer_above, settings.tip_drag, settings.color);
+			tip.prefer_above, tip_font, settings.tip_drag, settings.color);
 	}
 
 	// draw the toast.
 	if (loupe_state.toast.visible) draw_toast(bf.hdc(), bf.sz(),
-		loupe_state.toast.message, settings.toast, settings.color);
+		loupe_state.toast.message, toast_font, settings.toast, settings.color);
 }
 
 // export two functions.
 void dialogs::ExtFunc::DrawTip(HDC hdc, const SIZE& canvas, const RECT& box,
 	Color pixel_color, const POINT& pix, const SIZE& screen, bool& prefer_above,
-	const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme){
-	draw_tip(hdc, canvas, box, pixel_color, pix, screen, prefer_above, tip_drag, color_scheme);
+	HFONT font, const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme){
+	draw_tip(hdc, canvas, box, pixel_color, pix, screen, prefer_above, font, tip_drag, color_scheme);
 }
 void dialogs::ExtFunc::DrawToast(HDC hdc, const SIZE& canvas, const wchar_t* message,
-	const Settings::Toast& toast, const Settings::ColorScheme& color_scheme) {
-	draw_toast(hdc, canvas, message, toast, color_scheme);
+	HFONT font, const Settings::Toast& toast, const Settings::ColorScheme& color_scheme) {
+	draw_toast(hdc, canvas, message, font, toast, color_scheme);
 }
 
 

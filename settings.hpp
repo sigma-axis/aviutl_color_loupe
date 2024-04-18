@@ -113,7 +113,7 @@ inline constinit struct Settings {
 		constexpr static int8_t box_inflate_min		= 0,	box_inflate_max		= 16;
 		constexpr static int8_t box_tip_gap_min		= -64,	box_tip_gap_max		= 64;
 		constexpr static int8_t chrome_thick_min	= 0,	chrome_thick_max	= 16;
-		constexpr static int8_t chrome_corner_min	= 0,	chrome_corner_max	= 32;
+		constexpr static int8_t chrome_corner_min	= 0,	chrome_corner_max	= 64;
 		constexpr static int8_t chrome_margin_h_min	= -16,	chrome_margin_h_max	= 100;
 		constexpr static int8_t chrome_margin_v_min	= -16,	chrome_margin_v_max	= 100;
 		constexpr static int8_t chrome_pad_h_min	= -16,	chrome_pad_h_max	= 32;
