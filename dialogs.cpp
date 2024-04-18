@@ -111,6 +111,10 @@ static inline int get_slider_value(HWND slider) {
 	return static_cast<int>(::SendMessageW(slider, TBM_GETPOS, 0, 0));
 }
 
+
+////////////////////////////////
+// Internal messages.
+////////////////////////////////
 struct PrvMsg {
 	enum : uint32_t {
 		UpdateView = WM_USER + 64,
@@ -780,7 +784,10 @@ private:
 		macro(6, chrome_pad_v);\
 		macro(7, chrome_margin_h);\
 		macro(8, chrome_margin_v)
-#define decl_on_change(_, field)	void on_change_##field(int8_t data_new) { drag.##field = data_new; }
+#define decl_on_change(_, field)	\
+	void on_change_##field(int8_t data_new) {\
+		drag.##field = std::clamp(data_new, drag.##field##_min, drag.##field##_max);\
+	}
 	populate_field(decl_on_change);
 #undef decl_on_change
 
@@ -1176,7 +1183,10 @@ private:
 		macro(4, chrome_pad_v);\
 		macro(5, chrome_margin_h);\
 		macro(6, chrome_margin_v)
-#define decl_on_change(_, field)	void on_change_##field(int8_t data_new) { toast.##field = data_new; }
+#define decl_on_change(_, field)	\
+	void on_change_##field(int8_t data_new) {\
+		toast.##field = std::clamp(data_new, toast.##field##_min, toast.##field##_max);\
+	}
 	populate_field(decl_on_change);
 #undef decl_on_change
 
@@ -1198,8 +1208,8 @@ private:
 
 			auto font = dialogs::ExtFunc::CreateUprightFont(toast.font_name, toast.font_size);
 			dialogs::ExtFunc::DrawToast(cvs.hdc(), cvs.sz(),
-				sample.size() <= 1 ? res_str::get(IDS_DLG_TOAST_SAMPLE) : sample.data(),
-				nullptr, toast, color_scheme);
+				sample.size() <= 1 ? res_str::get(IDS_DLG_TOAST_SAMPLE) : sample.c_str(),
+				font, toast, color_scheme);
 			::DeleteObject(font);
 
 			::BitBlt(hdc, rc.left, rc.top, cvs.wd(), cvs.ht(), cvs.hdc(), 0, 0, SRCCOPY);
@@ -1330,6 +1340,88 @@ protected:
 				case IDC_SLIDER2:
 					on_change_thick(get_slider_value(ctrl));
 					set_text(IDC_EDIT2, grid.least_zoom_thick);
+					return true;
+				}
+				break;
+			}
+			break;
+		}
+		return false;
+	}
+};
+
+
+////////////////////////////////
+// フォントの設定．
+////////////////////////////////
+class font_settings : public dialog_base {
+	using Pivot = Settings::WheelZoom::Pivot;
+	using ClickActions = Settings::ClickActions;
+
+public:
+	wchar_t (&name)[LF_FACESIZE];
+	int8_t& size;
+	int8_t const min, max;
+	dialog_base* const update_target;
+	font_settings(wchar_t(&name)[LF_FACESIZE], int8_t& size, int8_t min, int8_t max,
+		dialog_base* const update_target)
+		: name{ name }, size{ size }, min{ min }, max{ max }, update_target{ update_target } {}
+
+private:
+	void on_change_name(HWND ctrl) {
+		::SendMessageW(ctrl, WM_GETTEXT, std::size(name), reinterpret_cast<LPARAM>(name));
+	}
+	void on_change_size(int8_t data_new) { size = std::clamp(data_new, min, max); }
+	void update_view() {
+		if (update_target != nullptr && update_target->hwnd != nullptr)
+			::SendMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
+	}
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_FONT; }
+
+	bool on_init(HWND) override
+	{
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+
+		// adding fonts to the combo box.
+		auto combo = ::GetDlgItem(hwnd, IDC_COMBO1);
+		HDC hdc = ::GetDC(nullptr);
+		::EnumFontFamiliesW(hdc, nullptr, [](const LOGFONTW* lf, auto, auto, LPARAM data) {
+			if (lf->lfFaceName[0] != L'@')
+				::SendMessageW(reinterpret_cast<HWND>(data), CB_ADDSTRING,
+					{}, reinterpret_cast<LPARAM>(lf->lfFaceName));
+			return TRUE;
+		}, reinterpret_cast<LPARAM>(combo));
+		::ReleaseDC(nullptr, hdc);
+		::SendMessageW(combo, CB_SELECTSTRING, -1, reinterpret_cast<LPARAM>(name));
+
+		// font size.
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), size, min, max);
+
+		return false;
+	}
+
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case CBN_SELCHANGE:
+				switch (id) {
+				case IDC_COMBO1:
+					on_change_name(ctrl);
+					update_view();
+					return true;
+				}
+				break;
+			case EN_CHANGE:
+				switch (id) {
+				case IDC_EDIT1:
+					on_change_size(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN1)));
+					update_view();
 					return true;
 				}
 				break;
@@ -1568,10 +1660,13 @@ private:
 				new drag_keys{ curr.tip_drag.keys },
 				new drag_range{ curr.tip_drag.range },
 				new wheel_zoom{ curr.tip_drag.wheel },
-				update_target,
 				new tip_drag{ curr.tip_drag },
+				update_target,
+				new font_settings{
+					curr.tip_drag.font_name, curr.tip_drag.font_size,
+					curr.tip_drag.font_size_min, curr.tip_drag.font_size_max, update_target
+				},
 				new tip_drag_format{ curr.tip_drag, update_target },
-				// TODO: fonts?
 			};
 		case tab_kind::drag_exedit:
 			return new vscroll_form{
@@ -1632,7 +1727,10 @@ private:
 			return new vscroll_form{
 				new toast_functions{ curr.toast, update_target },
 				update_target,
-				// TODO: fonts?
+				new font_settings{
+					curr.toast.font_name, curr.toast.font_size,
+					curr.toast.font_size_min, curr.toast.font_size_max, update_target
+				},
 			};
 
 		// TODO: color?

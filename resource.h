@@ -105,6 +105,7 @@
 #define IDD_SETTINGS_FORM_CMD_ZOOM_STEP 816
 #define IDD_SETTINGS_FORM_CMD_CLIPBOARD 817
 #define IDD_SETTINGS_FORM_CMD_DESC      818
+#define IDD_SETTINGS_FORM_FONT          819
 #define IDC_LIST1                       1001
 #define IDC_COMBO1                      1002
 #define IDC_COMBO2                      1003
@@ -160,7 +161,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        819
+#define _APS_NEXT_RESOURCE_VALUE        820
 #define _APS_NEXT_COMMAND_VALUE         40013
 #define _APS_NEXT_CONTROL_VALUE         1039
 #define _APS_NEXT_SYMED_VALUE           101

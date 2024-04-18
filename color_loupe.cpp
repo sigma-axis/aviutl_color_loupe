@@ -359,7 +359,7 @@ public:
 };
 static HFONT create_font(const wchar_t* name, int size) {
 	return ::CreateFontW(
-		size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET,
+		size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
 		DEFAULT_PITCH | FF_DONTCARE, name);
 }
@@ -1397,8 +1397,8 @@ static inline bool open_settings(HWND hwnd)
 		// re-apply the zoom level, as its valid range might have changed.
 		apply_zoom(loupe_state.zoom.zoom_level, 0, 0);
 
-		// no need to discard font handles for new font settings,
-		// as there's no option at this point yet.
+		// discard font handles for new font settings.
+		ext_obj.free();
 		return true;
 	}
 	return false;
@@ -1844,7 +1844,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.10-beta3"
+#define PLUGIN_VERSION	"v2.10-beta4"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
