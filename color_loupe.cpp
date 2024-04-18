@@ -572,43 +572,38 @@ static inline void draw_grid_thick(HDC hdc, const RECT& vb, const RECT& vp)
 }
 
 // 背景グラデーション & 枠付きの丸角矩形を描画．
-static inline void draw_round_rect(HDC hdc, const RECT& rc, int diameter, int thick, Color back_top, Color back_btm, Color chrome)
+static inline void draw_round_rect(HDC hdc, const RECT& rc, int corner, int thick, Color back_top, Color back_btm, Color chrome)
 {
 	auto br = ::SelectObject(hdc, ::GetStockObject(DC_BRUSH)),
 		pen = ::SelectObject(hdc, ::GetStockObject(NULL_PEN));
 	if (thick > 0) {
 		::SetDCBrushColor(hdc, chrome);
-		::RoundRect(hdc, rc.left - thick, rc.top - thick, rc.right + thick, rc.bottom + thick,
-			diameter + 2 * thick, diameter + 2 * thick);
+		::RoundRect(hdc, rc.left - thick, rc.top - thick, rc.right + thick, rc.bottom + thick, corner, corner);
+		corner = std::max(0, corner - 2 * thick);
 	}
 
 	if (back_top == back_btm) {
+		// simply draw a solid rounded rect.
 		::SetDCBrushColor(hdc, back_top);
-		::RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, diameter, diameter);
+		::RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, corner, corner);
 	}
 	else {
 		auto w = rc.right - rc.left, h = rc.bottom - rc.top;
-
-		// draw the gradation to another buffer.
-		auto grad = ::CreateCompatibleDC(hdc);
-		auto bmp = ::SelectObject(grad, ::CreateCompatibleBitmap(hdc, w, h));
-
-		constexpr GRADIENT_RECT rcs{ 0,1 };
+		constexpr GRADIENT_RECT rcs{ 0, 1 };
 		TRIVERTEX vertices[]{
 			{ 0, 0, static_cast<COLOR16>(back_top.R << 8), static_cast<COLOR16>(back_top.G << 8), static_cast<COLOR16>(back_top.B << 8) },
 			{ w, h, static_cast<COLOR16>(back_btm.R << 8), static_cast<COLOR16>(back_btm.G << 8), static_cast<COLOR16>(back_btm.B << 8) }
 		};
-		::GdiGradientFill(grad, vertices, 2, const_cast<GRADIENT_RECT*>(&rcs), 1, GRADIENT_FILL_RECT_V);
+
+		// draw the gradation to another buffer.
+		auto grad = CompatDC(hdc, w, h);
+		::GdiGradientFill(grad.hdc(), vertices, 2, const_cast<GRADIENT_RECT*>(&rcs), 1, GRADIENT_FILL_RECT_V);
 
 		// use XOR two times and black brush to clip off the rounded corner.
 		::SetDCBrushColor(hdc, 0); // black
-		::BitBlt(hdc, rc.left, rc.top, w, h, grad, 0, 0, SRCINVERT);
-		::RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, diameter, diameter);
-		::BitBlt(hdc, rc.left, rc.top, w, h, grad, 0, 0, SRCINVERT);
-
-		// delete the buffer.
-		::DeleteObject(::SelectObject(grad, bmp));
-		::DeleteDC(grad);
+		::BitBlt(hdc, rc.left, rc.top, w, h, grad.hdc(), 0, 0, SRCINVERT);
+		::RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, corner, corner);
+		::BitBlt(hdc, rc.left, rc.top, w, h, grad.hdc(), 0, 0, SRCINVERT);
 	}
 	::SelectObject(hdc, br); ::SelectObject(hdc, pen);
 }
@@ -628,9 +623,6 @@ static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
 		pixel_color.luma() <= Color::max_luma / 2 ? WHITE_BRUSH : BLACK_BRUSH)));
 
 	// prepare text.
-	constexpr int pad_x = 10, pad_y = 3, // ツールチップ矩形とテキストの間の空白．
-		gap_v = 10, // ピクセルを囲む四角形とツールチップとの間の空白．
-		margin = 4; // ウィンドウ端との最低保証空白．
 
 	// prepare the string to place in.
 	wchar_t tip_str[std::bit_ceil(
@@ -674,13 +666,16 @@ static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
 	::DrawTextW(hdc, tip_str, tip_strlen, &rc_txt, DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP | DT_CALCRECT);
 	{
 		const int w = rc_txt.right - rc_txt.left, h = rc_txt.bottom - rc_txt.top,
-			x_min = margin + pad_x, x_max = canvas.cx - (w + pad_x + margin),
-			y_min = margin + pad_y, y_max = canvas.cy - (h + pad_y + margin);
+			x_min = tip_drag.chrome_margin_h + tip_drag.chrome_pad_h,
+			x_max = canvas.cx - (w + tip_drag.chrome_pad_h + tip_drag.chrome_margin_h),
+			y_min = tip_drag.chrome_margin_v + tip_drag.chrome_pad_v,
+			y_max = canvas.cy - (h + tip_drag.chrome_pad_v + tip_drag.chrome_margin_v);
 
 		int x = (box.left + box.right) / 2 - w / 2;
 
 		// choose whether the tip should be placed above or below the box.
-		const int yU = box.top - gap_v - pad_y - h, yD = box.bottom + gap_v + pad_y;
+		const int yU = box.top - tip_drag.box_tip_gap - tip_drag.chrome_pad_v - h,
+			yD = box.bottom + tip_drag.box_tip_gap + tip_drag.chrome_pad_v;
 		if (auto up = y_min <= yU, dn = yD <= y_max; up || dn)
 			prefer_above = prefer_above ? up : !dn;
 		int y = prefer_above ? yU : yD;
@@ -690,11 +685,14 @@ static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
 		y = adjust(y, y_min, y_max);
 
 		rc_txt = { x, y, x + w, y + h };
-		rc_frm = { rc_txt.left - pad_x, rc_txt.top - pad_y, rc_txt.right + pad_x, rc_txt.bottom + pad_y };
+		rc_frm = {
+			rc_txt.left  - tip_drag.chrome_pad_h, rc_txt.top    - tip_drag.chrome_pad_v,
+			rc_txt.right + tip_drag.chrome_pad_h, rc_txt.bottom + tip_drag.chrome_pad_v
+		};
 	}
 
 	// draw the round rect and its frame.
-	draw_round_rect(hdc, rc_frm, tip_drag.chrome_radius, tip_drag.chrome_thick,
+	draw_round_rect(hdc, rc_frm, tip_drag.chrome_corner, tip_drag.chrome_thick,
 		color_scheme.back_top, color_scheme.back_bottom, color_scheme.chrome);
 
 	// then draw the text.
@@ -709,9 +707,6 @@ static inline void draw_toast(HDC hdc, const SIZE& canvas, const wchar_t* messag
 {
 	_ASSERT(ext_obj.is_active());
 
-	constexpr int pad_x = 6, pad_y = 4, // トースト矩形とテキストの間の空白．
-		margin = 4; // ウィンドウ端との最低保証空白．
-
 	// measure the text size.
 	auto tmp_fon = ::SelectObject(hdc, toast_font);
 	RECT rc_txt{}, rc_frm{};
@@ -724,22 +719,22 @@ static inline void draw_toast(HDC hdc, const SIZE& canvas, const wchar_t* messag
 	case top_left:
 	case left:
 	case bottom_left:
-		rc_frm.left = margin;
+		rc_frm.left = toast.chrome_margin_h;
 		goto from_left;
 	case top_right:
 	case right:
 	case bottom_right:
-		rc_frm.right = canvas.cx - margin;
-		rc_txt.right = rc_frm.right - pad_x;
+		rc_frm.right = canvas.cx - toast.chrome_margin_h;
+		rc_txt.right = rc_frm.right - toast.chrome_pad_h;
 		rc_txt.left = rc_txt.right - l;
-		rc_frm.left = rc_txt.left - pad_x;
+		rc_frm.left = rc_txt.left - toast.chrome_pad_h;
 		break;
 	default:
-		rc_frm.left = canvas.cx / 2 - l / 2 - pad_x;
+		rc_frm.left = canvas.cx / 2 - l / 2 - toast.chrome_pad_h;
 	from_left:
-		rc_txt.left = rc_frm.left + pad_x;
+		rc_txt.left = rc_frm.left + toast.chrome_pad_h;
 		rc_txt.right = rc_txt.left + l;
-		rc_frm.right = rc_txt.right + pad_x;
+		rc_frm.right = rc_txt.right + toast.chrome_pad_h;
 		break;
 	}
 
@@ -750,27 +745,27 @@ static inline void draw_toast(HDC hdc, const SIZE& canvas, const wchar_t* messag
 	case top_left:
 	case top:
 	case top_right:
-		rc_frm.top = margin;
+		rc_frm.top = toast.chrome_margin_v;
 		goto from_top;
 	case bottom_left:
 	case bottom:
 	case bottom_right:
-		rc_frm.bottom = canvas.cy - margin;
-		rc_txt.bottom = rc_frm.bottom - pad_y;
+		rc_frm.bottom = canvas.cy - toast.chrome_margin_v;
+		rc_txt.bottom = rc_frm.bottom - toast.chrome_pad_v;
 		rc_txt.top = rc_txt.bottom - l;
-		rc_frm.top = rc_txt.top - pad_y;
+		rc_frm.top = rc_txt.top - toast.chrome_pad_v;
 		break;
 	default:
-		rc_frm.top = canvas.cy / 2 - l / 2 - pad_y;
+		rc_frm.top = canvas.cy / 2 - l / 2 - toast.chrome_pad_v;
 	from_top:
-		rc_txt.top = rc_frm.top + pad_y;
+		rc_txt.top = rc_frm.top + toast.chrome_pad_v;
 		rc_txt.bottom = rc_txt.top + l;
-		rc_frm.bottom = rc_txt.bottom + pad_y;
+		rc_frm.bottom = rc_txt.bottom + toast.chrome_pad_v;
 		break;
 	}
 
 	// draw the round rect and its frame.
-	draw_round_rect(hdc, rc_frm, toast.chrome_radius, toast.chrome_thick,
+	draw_round_rect(hdc, rc_frm, toast.chrome_corner, toast.chrome_thick,
 		color_scheme.back_top, color_scheme.back_bottom, color_scheme.chrome);
 
 	// then draw the text.
@@ -1833,7 +1828,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.10-beta2"
+#define PLUGIN_VERSION	"v2.10-beta3"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

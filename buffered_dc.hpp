@@ -74,4 +74,32 @@ namespace sigma_lib::W32::GDI
 			return { rc.right, rc.bottom };
 		}
 	};
+
+	// BitBlt 用の一時描画領域．
+	class CompatDC {
+		HDC const back_dc;
+		HGDIOBJ const bmp;
+		RECT const rect;
+
+	public:
+		CompatDC(HDC hdc, int width, int height)
+			: back_dc{ ::CreateCompatibleDC(hdc) }
+			, bmp{ ::SelectObject(back_dc, ::CreateCompatibleBitmap(hdc, width, height)) }
+			, rect{ 0, 0, width, height } {}
+
+		HDC hdc() const { return back_dc; }
+		// width of the bitmap.
+		constexpr int wd() const { return rect.right; }
+		// height of the bitmap.
+		constexpr int ht() const { return rect.bottom; }
+
+		// returns the reference to the bitmap rect.
+		constexpr RECT const& rc() const { return rect; }
+		constexpr SIZE const& sz() const { return std::bit_cast<SIZE const*>(&rect)[1]; }
+
+		~CompatDC() {
+			::DeleteObject(::SelectObject(back_dc, bmp));
+			::DeleteDC(back_dc);
+		}
+	};
 }

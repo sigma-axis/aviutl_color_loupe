@@ -101,13 +101,23 @@ inline constinit struct Settings {
 		int8_t font_size		= 16;
 
 		int8_t box_inflate		= 4;
+		int8_t box_tip_gap		= 10;
 		int8_t chrome_thick		= 1;
-		int8_t chrome_radius	= 3; // NOTE: is actually diameter.
+		int8_t chrome_corner	= 5; // in diameter of the circle.
+		int8_t chrome_margin_h	= 4;
+		int8_t chrome_margin_v	= 4;
+		int8_t chrome_pad_h		= 10;
+		int8_t chrome_pad_v		= 3;
 
 		constexpr static int8_t font_size_min		= 4, font_size_max		= 72;
 		constexpr static int8_t box_inflate_min		= 0, box_inflate_max	= 16;
+		constexpr static int8_t box_tip_gap_min		= 0, box_tip_gap_max	= 32;
 		constexpr static int8_t chrome_thick_min	= 0, chrome_thick_max	= 16;
-		constexpr static int8_t chrome_radius_min	= 0, chrome_radius_max	= 32;
+		constexpr static int8_t chrome_corner_min	= 0, chrome_corner_max	= 32;
+		constexpr static int8_t chrome_margin_h_min	= 0, chrome_margin_h_max= 32;
+		constexpr static int8_t chrome_margin_v_min	= 0, chrome_margin_v_max= 32;
+		constexpr static int8_t chrome_pad_h_min	= 0, chrome_pad_h_max	= 32;
+		constexpr static int8_t chrome_pad_v_min	= 0, chrome_pad_v_max	= 32;
 	} tip_drag{};
 
 	struct ExEditDrag {
@@ -177,13 +187,21 @@ inline constinit struct Settings {
 		wchar_t font_name[LF_FACESIZE]{ L"Yu Gothic UI" };
 		int8_t font_size = 18;
 
-		int8_t chrome_thick = 1;
-		int8_t chrome_radius = 3; // NOTE: is actually diameter.
+		int8_t chrome_thick		= 1;
+		int8_t chrome_corner	= 5; // in diameter of the circle.
+		int8_t chrome_margin_h	= 4;
+		int8_t chrome_margin_v	= 4;
+		int8_t chrome_pad_h		= 6;
+		int8_t chrome_pad_v		= 4;
 
 		constexpr static int	duration_min		= 200,	duration_max		= 60'000;
 		constexpr static int8_t	font_size_min		= 4,	font_size_max		= 72;
 		constexpr static int8_t	chrome_thick_min	= 0,	chrome_thick_max	= 16;
-		constexpr static int8_t	chrome_radius_min	= 0,	chrome_radius_max	= 32;
+		constexpr static int8_t	chrome_corner_min	= 0,	chrome_corner_max	= 32;
+		constexpr static int8_t chrome_margin_h_min	= 0,	chrome_margin_h_max	= 32;
+		constexpr static int8_t chrome_margin_v_min	= 0,	chrome_margin_v_max	= 32;
+		constexpr static int8_t chrome_pad_h_min	= 0,	chrome_pad_h_max	= 32;
+		constexpr static int8_t chrome_pad_v_min	= 0,	chrome_pad_v_max	= 32;
 	} toast{};
 
 	struct Grid {
@@ -279,8 +297,13 @@ inline constinit struct Settings {
 		load_enum(tip_drag, coord_fmt);
 		load_int(tip_drag, font_size);
 		load_int(tip_drag, box_inflate);
+		load_int(tip_drag, box_tip_gap);
 		load_int(tip_drag, chrome_thick);
-		load_int(tip_drag, chrome_radius);
+		load_int(tip_drag, chrome_corner);
+		load_int(tip_drag, chrome_margin_h);
+		load_int(tip_drag, chrome_margin_v);
+		load_int(tip_drag, chrome_pad_h);
+		load_int(tip_drag, chrome_pad_v);
 
 		load_drag(exedit_drag);
 		load_enum(exedit_drag, fake_shift);
@@ -307,7 +330,11 @@ inline constinit struct Settings {
 		load_int(toast, duration);
 		load_int(toast, font_size);
 		load_int(toast, chrome_thick);
-		load_int(toast, chrome_radius);
+		load_int(toast, chrome_corner);
+		load_int(toast, chrome_margin_h);
+		load_int(toast, chrome_margin_v);
+		load_int(toast, chrome_pad_h);
+		load_int(toast, chrome_pad_v);
 
 		{
 			char buf_ansi[3 * std::extent_v<decltype(tip_drag.font_name)>];
@@ -388,7 +415,7 @@ inline constinit struct Settings {
 		//save_dec(tip_drag, font_size);
 		//save_dec(tip_drag, box_inflate);
 		//save_dec(tip_drag, chrome_thick);
-		//save_dec(tip_drag, chrome_radius);
+		//save_dec(tip_drag, chrome_corner);
 
 		save_drag(exedit_drag);
 		save_dec(exedit_drag, fake_shift);
@@ -415,7 +442,7 @@ inline constinit struct Settings {
 		save_dec(toast, duration);
 		//save_dec(toast, font_size);
 		//save_dec(toast, chrome_thick);
-		//save_dec(toast, chrome_radius);
+		//save_dec(toast, chrome_corner);
 
 		//{
 		//	char buf_ansi[3 * std::extent_v<decltype(tip.font_name)>];
