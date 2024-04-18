@@ -16,7 +16,24 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+#include "settings.hpp"
+
 namespace dialogs
 {
+	// opens a dialog for settings of this app.
 	bool open_settings(HWND parent);
+
+	// external functions that are helpful for the dialog functionality.
+	namespace ExtFunc
+	{
+		using namespace sigma_lib::W32::GDI;
+
+		std::tuple<int, int> ScaleFromZoomLevel(int zoom_level);
+		void DrawTip(HDC hdc, const SIZE& canvas, const RECT& box,
+			Color pixel_color, const POINT& pix, const SIZE& screen, bool& prefer_above,
+			const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme);
+		void DrawToast(HDC hdc, const SIZE& canvas, const wchar_t* message,
+			const Settings::Toast& toast, const Settings::ColorScheme& color_scheme);
+
+	}
 }

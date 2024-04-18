@@ -86,6 +86,8 @@ namespace sigma_lib::W32::GDI
 			: back_dc{ ::CreateCompatibleDC(hdc) }
 			, bmp{ ::SelectObject(back_dc, ::CreateCompatibleBitmap(hdc, width, height)) }
 			, rect{ 0, 0, width, height } {}
+		CompatDC(const CompatDC&) = delete;
+		CompatDC(CompatDC&&) = delete;
 
 		HDC hdc() const { return back_dc; }
 		// width of the bitmap.

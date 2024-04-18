@@ -1,4 +1,4 @@
-﻿/*
+/*
 The MIT License (MIT)
 
 Copyright (c) 2024 sigma-axis
@@ -109,15 +109,15 @@ inline constinit struct Settings {
 		int8_t chrome_pad_h		= 10;
 		int8_t chrome_pad_v		= 3;
 
-		constexpr static int8_t font_size_min		= 4, font_size_max		= 72;
-		constexpr static int8_t box_inflate_min		= 0, box_inflate_max	= 16;
-		constexpr static int8_t box_tip_gap_min		= 0, box_tip_gap_max	= 32;
-		constexpr static int8_t chrome_thick_min	= 0, chrome_thick_max	= 16;
-		constexpr static int8_t chrome_corner_min	= 0, chrome_corner_max	= 32;
-		constexpr static int8_t chrome_margin_h_min	= 0, chrome_margin_h_max= 32;
-		constexpr static int8_t chrome_margin_v_min	= 0, chrome_margin_v_max= 32;
-		constexpr static int8_t chrome_pad_h_min	= 0, chrome_pad_h_max	= 32;
-		constexpr static int8_t chrome_pad_v_min	= 0, chrome_pad_v_max	= 32;
+		constexpr static int8_t font_size_min		= 4,	font_size_max		= 72;
+		constexpr static int8_t box_inflate_min		= 0,	box_inflate_max		= 16;
+		constexpr static int8_t box_tip_gap_min		= -64,	box_tip_gap_max		= 64;
+		constexpr static int8_t chrome_thick_min	= 0,	chrome_thick_max	= 16;
+		constexpr static int8_t chrome_corner_min	= 0,	chrome_corner_max	= 32;
+		constexpr static int8_t chrome_margin_h_min	= -16,	chrome_margin_h_max	= 100;
+		constexpr static int8_t chrome_margin_v_min	= -16,	chrome_margin_v_max	= 100;
+		constexpr static int8_t chrome_pad_h_min	= -16,	chrome_pad_h_max	= 32;
+		constexpr static int8_t chrome_pad_v_min	= -16,	chrome_pad_v_max	= 32;
 	} tip_drag{};
 
 	struct ExEditDrag {
@@ -198,10 +198,10 @@ inline constinit struct Settings {
 		constexpr static int8_t	font_size_min		= 4,	font_size_max		= 72;
 		constexpr static int8_t	chrome_thick_min	= 0,	chrome_thick_max	= 16;
 		constexpr static int8_t	chrome_corner_min	= 0,	chrome_corner_max	= 32;
-		constexpr static int8_t chrome_margin_h_min	= 0,	chrome_margin_h_max	= 32;
-		constexpr static int8_t chrome_margin_v_min	= 0,	chrome_margin_v_max	= 32;
-		constexpr static int8_t chrome_pad_h_min	= 0,	chrome_pad_h_max	= 32;
-		constexpr static int8_t chrome_pad_v_min	= 0,	chrome_pad_v_max	= 32;
+		constexpr static int8_t chrome_margin_h_min	= -16,	chrome_margin_h_max	= 100;
+		constexpr static int8_t chrome_margin_v_min	= -16,	chrome_margin_v_max	= 100;
+		constexpr static int8_t chrome_pad_h_min	= -16,	chrome_pad_h_max	= 32;
+		constexpr static int8_t chrome_pad_v_min	= -16,	chrome_pad_v_max	= 32;
 	} toast{};
 
 	struct Grid {
@@ -413,9 +413,14 @@ inline constinit struct Settings {
 		save_dec(tip_drag, color_fmt);
 		save_dec(tip_drag, coord_fmt);
 		//save_dec(tip_drag, font_size);
-		//save_dec(tip_drag, box_inflate);
-		//save_dec(tip_drag, chrome_thick);
-		//save_dec(tip_drag, chrome_corner);
+		save_dec(tip_drag, box_inflate);
+		save_dec(tip_drag, box_tip_gap);
+		save_dec(tip_drag, chrome_thick);
+		save_dec(tip_drag, chrome_corner);
+		save_dec(tip_drag, chrome_margin_h);
+		save_dec(tip_drag, chrome_margin_v);
+		save_dec(tip_drag, chrome_pad_h);
+		save_dec(tip_drag, chrome_pad_v);
 
 		save_drag(exedit_drag);
 		save_dec(exedit_drag, fake_shift);
@@ -443,6 +448,10 @@ inline constinit struct Settings {
 		//save_dec(toast, font_size);
 		//save_dec(toast, chrome_thick);
 		//save_dec(toast, chrome_corner);
+		//save_dec(toast, chrome_margin_h);
+		//save_dec(toast, chrome_margin_v);
+		//save_dec(toast, chrome_pad_h);
+		//save_dec(toast, chrome_pad_v);
 
 		//{
 		//	char buf_ansi[3 * std::extent_v<decltype(tip.font_name)>];
@@ -486,8 +495,4 @@ inline constinit struct Settings {
 #undef save_dec
 #undef save_gen
 	}
-
-	struct HelperFunctions {
-		static std::tuple<int, int> ScaleFromZoomLevel(int zoom_level);
-	};
 } settings;

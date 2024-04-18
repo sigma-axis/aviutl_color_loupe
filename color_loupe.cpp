@@ -192,8 +192,8 @@ static inline constinit struct LoupeState {
 static_assert(LoupeState::Zoom::zoom_level_max == Settings::Zoom::level_max_max);
 static_assert(LoupeState::Zoom::zoom_level_min == Settings::Zoom::level_min_min);
 
-// define a function to export.
-std::tuple<int, int> Settings::HelperFunctions::ScaleFromZoomLevel(int zoom_level) {
+// export a function.
+std::tuple<int, int> dialogs::ExtFunc::ScaleFromZoomLevel(int zoom_level) {
 	return decltype(loupe_state.zoom)::scale_ratio_Q(zoom_level);
 }
 
@@ -840,6 +840,17 @@ static inline void draw(HWND hwnd)
 	// draw the toast.
 	if (loupe_state.toast.visible) draw_toast(bf.hdc(), bf.sz(),
 		loupe_state.toast.message, settings.toast, settings.color);
+}
+
+// export two functions.
+void dialogs::ExtFunc::DrawTip(HDC hdc, const SIZE& canvas, const RECT& box,
+	Color pixel_color, const POINT& pix, const SIZE& screen, bool& prefer_above,
+	const Settings::TipDrag& tip_drag, const Settings::ColorScheme& color_scheme){
+	draw_tip(hdc, canvas, box, pixel_color, pix, screen, prefer_above, tip_drag, color_scheme);
+}
+void dialogs::ExtFunc::DrawToast(HDC hdc, const SIZE& canvas, const wchar_t* message,
+	const Settings::Toast& toast, const Settings::ColorScheme& color_scheme) {
+	draw_toast(hdc, canvas, message, toast, color_scheme);
 }
 
 

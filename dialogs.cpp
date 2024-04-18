@@ -1,4 +1,4 @@
-﻿/*
+/*
 The MIT License (MIT)
 
 Copyright (c) 2024 sigma-axis
@@ -13,11 +13,14 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <string>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <CommCtrl.h>
+
+#include "buffered_dc.hpp"
 
 #include "resource.hpp"
 
@@ -720,6 +723,138 @@ public:
 
 
 ////////////////////////////////
+// 色・座標表示ドラッグ(長さ設定).
+////////////////////////////////
+class tip_drag_metrics : public dialog_base {
+	using Color = dialogs::ExtFunc::Color;
+	using CompatDC = dialogs::ExtFunc::CompatDC;
+
+	struct {
+		bool prefer_above = false;
+		uint8_t rough_pos_x = 8, rough_pos_y = 6; // from 1 to +15.
+		uint16_t pic_x = 900, pic_y = 500; // from 0 to 1919 or 1079.
+		Color color{ 0 };
+
+		void randomize() {
+			constexpr auto rng = [](int min, size_t len) -> int {
+				return (len * static_cast<uint16_t>(rand())) / (RAND_MAX + 1) + min;
+			};
+			rough_pos_x = rng(1, 15);
+			rough_pos_y = rng(1, 15);
+			pic_x = rng(0, 1920);
+			pic_y = rng(0, 1080);
+			color = Color{ rng(0, 256), rng(0, 256), rng(0, 256) };
+		}
+		POINT pos(const SIZE& sz){
+			return { (sz.cx >> 4) * rough_pos_x, (sz.cy >> 4) * rough_pos_y };
+		}
+	} sample;
+
+public:
+	Settings::TipDrag& drag;
+	Settings::ColorScheme const& color_scheme;
+	tip_drag_metrics(Settings::TipDrag& drag, Settings::ColorScheme const& color_scheme)
+		: drag{ drag }, color_scheme{ color_scheme } {}
+
+private:
+#define populate_field(macro)	\
+		macro(1, box_inflate);\
+		macro(2, box_tip_gap);\
+		macro(3, chrome_thick);\
+		macro(4, chrome_corner);\
+		macro(5, chrome_pad_h);\
+		macro(6, chrome_pad_v);\
+		macro(7, chrome_margin_h);\
+		macro(8, chrome_margin_v)
+#define decl_on_change(_, field)	void on_change_##field(int8_t data_new) { drag.##field = data_new; }
+	populate_field(decl_on_change);
+#undef decl_on_change
+
+	void update_view()
+	{
+		RECT rc;
+		::GetWindowRect(::GetDlgItem(hwnd, IDC_RECT1), &rc);
+		::MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&rc), 2);
+
+		auto hdc = ::GetDC(hwnd);
+		{
+			CompatDC cvs{ hdc, rc.right - rc.left, rc.bottom - rc.top };
+
+			::SetDCBrushColor(cvs.hdc(), sample.color);
+			::FillRect(cvs.hdc(), &cvs.rc(), reinterpret_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
+
+			auto pos = sample.pos(cvs.sz());
+			dialogs::ExtFunc::DrawTip(cvs.hdc(), cvs.sz(),
+				{ pos.x - 2, pos.y - 2, pos.x + 2, pos.y + 2 }, sample.color,
+				{ sample.pic_x, sample.pic_y }, { 1920, 1080 },
+				sample.prefer_above, drag, color_scheme);
+
+			::BitBlt(hdc, rc.left, rc.top, cvs.wd(), cvs.ht(), cvs.hdc(), 0, 0, SRCCOPY);
+		}
+		::ReleaseDC(hwnd, hdc);
+	}
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_TIP_METRICS; }
+
+	bool on_init(HWND) override
+	{
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+#define set_spin(id, field)	init_spin(::GetDlgItem(hwnd, IDC_SPIN##id), drag.field, Settings::TipDrag::field##_min, Settings::TipDrag::field##_max)
+		populate_field(set_spin);
+#undef set_spin
+
+		std::srand(reinterpret_cast<uint32_t>(hwnd));
+		return false;
+	}
+
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case EN_CHANGE:
+				switch (id) {
+#define invoke_on_change(id, field)	\
+				case IDC_EDIT##id:\
+					on_change_##field(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN##id)));\
+					goto update
+					populate_field(invoke_on_change);
+#undef populate_field
+
+				update:
+					update_view();
+					return true;
+				}
+				break;
+
+			case BN_CLICKED:
+				switch (id) {
+				case IDC_BUTTON1:
+					sample.randomize();
+					update_view();
+					return true;
+				}
+				break;
+			}
+			break;
+
+		case WM_PAINT:
+			::DefWindowProcW(hwnd, message, wparam, lparam);
+			update_view();
+			return true;
+
+		case WM_LBUTTONDOWN:
+			update_view();
+			break;
+		}
+		return false;
+	}
+};
+
+
+////////////////////////////////
 // 拡張編集ドラッグ固有．
 ////////////////////////////////
 class exedit_drag : public dialog_base {
@@ -797,7 +932,7 @@ private:
 		zoom.level_max = std::clamp(data_new, Zoom::level_max_min, Zoom::level_max_max);
 	}
 	void set_text(int id, int level) {
-		auto [n, d] = Settings::HelperFunctions::ScaleFromZoomLevel(level);
+		auto [n, d] = dialogs::ExtFunc::ScaleFromZoomLevel(level);
 		wchar_t buf[std::size(L"0123.45")];
 		std::swprintf(buf, std::size(buf), L"%.2f", static_cast<double>(n) / d);
 		::SendMessageW(::GetDlgItem(hwnd, id), WM_SETTEXT,
@@ -998,6 +1133,110 @@ protected:
 
 
 ////////////////////////////////
+// 通知メッセージ(長さ設定).
+////////////////////////////////
+class toast_metrics : public dialog_base {
+	using Color = dialogs::ExtFunc::Color;
+	using CompatDC = dialogs::ExtFunc::CompatDC;
+
+public:
+	Settings::Toast& toast;
+	Settings::ColorScheme const& color_scheme;
+	toast_metrics(Settings::Toast& toast, Settings::ColorScheme const& color_scheme)
+		: toast{ toast }, color_scheme{ color_scheme } {}
+
+private:
+#define populate_field(macro)	\
+		macro(1, chrome_thick);\
+		macro(2, chrome_corner);\
+		macro(3, chrome_pad_h);\
+		macro(4, chrome_pad_v);\
+		macro(5, chrome_margin_h);\
+		macro(6, chrome_margin_v)
+#define decl_on_change(_, field)	void on_change_##field(int8_t data_new) { toast.##field = data_new; }
+	populate_field(decl_on_change);
+#undef decl_on_change
+
+	void update_view()
+	{
+		RECT rc;
+		::GetWindowRect(::GetDlgItem(hwnd, IDC_RECT1), &rc);
+		::MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&rc), 2);
+
+		auto hdc = ::GetDC(hwnd);
+		{
+			CompatDC cvs{ hdc, rc.right - rc.left, rc.bottom - rc.top };
+			::FillRect(cvs.hdc(), &cvs.rc(), reinterpret_cast<HBRUSH>(::GetStockObject(BLACK_BRUSH)));
+
+			auto edit = ::GetDlgItem(hwnd, IDC_EDIT7);
+			std::wstring sample{};
+			sample.resize_and_overwrite(::SendMessageW(edit, WM_GETTEXTLENGTH, 0, 0),
+				[edit](wchar_t* p, size_t count) { return ::SendMessageW(edit, WM_GETTEXT, count + 1, reinterpret_cast<LPARAM>(p)); });
+
+			dialogs::ExtFunc::DrawToast(cvs.hdc(), cvs.sz(),
+				sample.size() <= 1 ? res_str::get(IDS_DLG_TOAST_SAMPLE) : sample.data(),
+				toast, color_scheme);
+			::BitBlt(hdc, rc.left, rc.top, cvs.wd(), cvs.ht(), cvs.hdc(), 0, 0, SRCCOPY);
+		}
+		::ReleaseDC(hwnd, hdc);
+	}
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_TOAST_METRICS; }
+
+	bool on_init(HWND) override
+	{
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+#define set_spin(id, field)	init_spin(::GetDlgItem(hwnd, IDC_SPIN##id), toast.field, Settings::Toast::field##_min, Settings::Toast::field##_max)
+		populate_field(set_spin);
+#undef set_spin
+
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT7), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DLG_TOAST_SAMPLE)));
+
+		return false;
+	}
+
+	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case EN_CHANGE:
+				switch (id) {
+#define invoke_on_change(id, field)	\
+				case IDC_EDIT##id:\
+					on_change_##field(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN##id)));\
+					goto update
+					populate_field(invoke_on_change);
+#undef populate_field
+
+				case IDC_EDIT7:
+				update:
+					update_view();
+					return true;
+				}
+				break;
+			}
+			break;
+
+		case WM_PAINT:
+			::DefWindowProcW(hwnd, message, wparam, lparam);
+			update_view();
+			return true;
+
+		case WM_LBUTTONDOWN:
+			update_view();
+			break;
+		}
+		return false;
+	}
+};
+
+
+////////////////////////////////
 // グリッド設定．
 ////////////////////////////////
 class grid_options : public dialog_base {
@@ -1017,7 +1256,7 @@ private:
 	void set_text(int id, int level) {
 		wchar_t buf[std::size(L"0123.45")]{ L"----" };
 		if (level <= zoom_level_max) {
-			auto [n, d] = Settings::HelperFunctions::ScaleFromZoomLevel(level);
+			auto [n, d] = dialogs::ExtFunc::ScaleFromZoomLevel(level);
 			std::swprintf(buf, std::size(buf), L"%.2f", static_cast<double>(n) / d);
 		}
 		::SendMessageW(::GetDlgItem(hwnd, id), WM_SETTEXT,
@@ -1301,6 +1540,7 @@ private:
 				new drag_keys{ curr.tip_drag.keys },
 				new drag_range{ curr.tip_drag.range },
 				new wheel_zoom{ curr.tip_drag.wheel },
+				new tip_drag_metrics{ curr.tip_drag, curr.color },
 				new tip_drag{ curr.tip_drag },
 				new tip_drag_format{ curr.tip_drag },
 				// TODO: fonts?
@@ -1362,6 +1602,7 @@ private:
 		case tab_kind::toast:
 			return new vscroll_form{
 				new toast_functions{ curr.toast },
+				new toast_metrics{ curr.toast, curr.color },
 				// TODO: fonts?
 			};
 
