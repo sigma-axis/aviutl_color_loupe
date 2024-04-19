@@ -186,6 +186,7 @@ inline constinit struct Settings {
 			fraction = 0, decimal = 1, percent = 2,
 		};
 		ScaleFormat scale_format = ScaleFormat::decimal;
+		// TODO: another format choice for scaling down.
 
 		int duration = 3000;
 
@@ -288,7 +289,7 @@ inline constinit struct Settings {
 		load_int(section, range.timespan);\
 		load_bool(section, wheel.enabled);\
 		load_bool(section, wheel.reversed);\
-		load_bool(section, wheel.num_steps);\
+		load_int(section, wheel.num_steps);\
 		load_enum(section, wheel.pivot)
 
 		load_drag(loupe_drag);
@@ -316,6 +317,7 @@ inline constinit struct Settings {
 
 		load_bool(zoom, wheel.enabled);
 		load_bool(zoom, wheel.reversed);
+		load_int(zoom, wheel.num_steps);
 		load_enum(zoom, wheel.pivot);
 		load_int(zoom, level_min);
 		load_int(zoom, level_max);
@@ -343,7 +345,7 @@ inline constinit struct Settings {
 
 		{
 			char buf_ansi[3 * std::extent_v<decltype(tip_drag.font_name)>];
-			if (::GetPrivateProfileStringA("tip", "font_name", "", buf_ansi, std::size(buf_ansi), ini_file) > 0)
+			if (::GetPrivateProfileStringA("tip_drag", "font_name", "", buf_ansi, std::size(buf_ansi), ini_file) > 0)
 				::MultiByteToWideChar(CP_UTF8, 0, buf_ansi, -1, tip_drag.font_name, std::size(tip_drag.font_name));
 
 			if (::GetPrivateProfileStringA("toast", "font_name", "", buf_ansi, std::size(buf_ansi), ini_file) > 0)
@@ -386,13 +388,13 @@ inline constinit struct Settings {
 	// saving to .ini file.
 	void save(const char* ini_file)
 	{
-		auto save_raw = [&](int32_t val, const char* section, const char* key, bool hex = false) {
+		auto save_raw = [&](int32_t val, const char* section, const char* key, bool col = false) {
 			char buf[std::size("+4294967296")];
-			std::snprintf(buf, std::size(buf), hex ? "0x%08x" : "%d", val);
+			std::snprintf(buf, std::size(buf), col ? "0x%06x" : "%d", val);
 			::WritePrivateProfileStringA(section, key, buf, ini_file);
 		};
 
-#define save_gen(section, tgt, write, hex)	save_raw(static_cast<int32_t>(write(section.tgt)), #section, #tgt, hex)
+#define save_gen(section, tgt, write, col)	save_raw(static_cast<int32_t>(write(section.tgt)), #section, #tgt, col)
 #define save_dec(section, tgt)		save_gen(section, tgt, /* id */, false)
 #define save_color(section, tgt)	save_gen(section, tgt, [](auto y) { return y.to_formattable(); }, true)
 #define save_bool(section, tgt)		::WritePrivateProfileStringA(#section, #tgt, section.tgt ? "1" : "0", ini_file)
@@ -405,7 +407,7 @@ inline constinit struct Settings {
 		save_dec(section, range.timespan);\
 		save_bool(section, wheel.enabled);\
 		save_bool(section, wheel.reversed);\
-		save_bool(section, wheel.num_steps);\
+		save_dec(section, wheel.num_steps);\
 		save_dec(section, wheel.pivot)
 
 		save_drag(loupe_drag);
@@ -433,6 +435,7 @@ inline constinit struct Settings {
 
 		save_bool(zoom, wheel.enabled);
 		save_bool(zoom, wheel.reversed);
+		save_dec(zoom, wheel.num_steps);
 		save_dec(zoom, wheel.pivot);
 		save_dec(zoom, level_min);
 		save_dec(zoom, level_max);
@@ -461,10 +464,10 @@ inline constinit struct Settings {
 		{
 			char buf_ansi[3 * std::extent_v<decltype(tip_drag.font_name)>];
 			::WideCharToMultiByte(CP_UTF8, 0, tip_drag.font_name, -1, buf_ansi, std::size(buf_ansi), nullptr, nullptr);
-			::WriteProfileStringA("tip", "font_name", buf_ansi);
+			::WritePrivateProfileStringA("tip_drag", "font_name", buf_ansi, ini_file);
 
 			::WideCharToMultiByte(CP_UTF8, 0, toast.font_name, -1, buf_ansi, std::size(buf_ansi), nullptr, nullptr);
-			::WriteProfileStringA("toast", "font_name", buf_ansi);
+			::WritePrivateProfileStringA("toast", "font_name", buf_ansi, ini_file);
 		}
 
 		save_dec(grid, least_zoom_thin);
@@ -492,7 +495,7 @@ inline constinit struct Settings {
 		save_dec(commands, copy_color_fmt);
 		save_dec(commands, copy_coord_fmt);
 
-		// lines commented out are setting items that threre're no means to change at runtime.
+		// lines commented out are setting items that threre're no means to change at runtime. (all cleared now.)
 
 #undef save_drag
 #undef save_bool
