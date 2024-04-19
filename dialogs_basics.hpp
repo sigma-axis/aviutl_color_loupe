@@ -20,8 +20,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-#include "resource.h"
-extern HMODULE this_dll;
+#include "resource.hpp"
 
 namespace dialogs::basics
 {
@@ -35,12 +34,12 @@ namespace dialogs::basics
 		};
 		static intptr_t CALLBACK proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 		{
-			bool ret;
+			intptr_t ret;
 			if (message == WM_INITDIALOG) {
 				auto cxt = reinterpret_cast<create_context*>(lparam);
 				cxt->that->hwnd = hwnd;
 				::SetWindowLongW(hwnd, GWL_USERDATA, reinterpret_cast<LONG>(cxt->that));
-				ret = cxt->that->on_init(reinterpret_cast<HWND>(wparam));
+				ret = cxt->that->on_init(reinterpret_cast<HWND>(wparam)) ? 1 : 0;
 				if (cxt->position != nullptr) {
 					auto& rc = *cxt->position;
 					::MoveWindow(hwnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
@@ -53,15 +52,15 @@ namespace dialogs::basics
 				ret = that->handler(message, wparam, lparam);
 				if (message == WM_NCDESTROY) that->hwnd = nullptr;
 			}
-
-			return ret ? TRUE : FALSE;
+			
+			return ret;
 		}
 		bool no_callback = false;
 
 	protected:
 		virtual uintptr_t template_id() const = 0;
 		virtual bool on_init(HWND def_control) = 0;
-		virtual bool handler(UINT message, WPARAM wparam, LPARAM lparam) = 0;
+		virtual intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) = 0;
 
 		const auto suppress_callback() {
 			struct backyard {
@@ -217,7 +216,7 @@ namespace dialogs::basics
 			return false;
 		}
 
-		bool handler(UINT message, WPARAM wparam, LPARAM lparam)
+		intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 		{
 			// TODO: scroll to the focused element when a descendant control got a focus.
 			switch (message) {

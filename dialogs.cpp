@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 */
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <memory>
 #include <string>
@@ -19,6 +20,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <CommCtrl.h>
+#include <commdlg.h>
 
 #include "buffered_dc.hpp"
 
@@ -166,7 +168,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -261,7 +263,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -344,7 +346,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -425,7 +427,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		switch (message) {
 		case WM_COMMAND:
@@ -485,7 +487,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -561,7 +563,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -645,7 +647,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -709,7 +711,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -832,7 +834,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		switch (message) {
 		case WM_COMMAND:
@@ -914,7 +916,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -982,7 +984,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1109,7 +1111,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1234,7 +1236,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1321,7 +1323,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1403,7 +1405,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1458,7 +1460,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1509,7 +1511,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1570,7 +1572,7 @@ protected:
 		return false;
 	}
 
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		auto ctrl = reinterpret_cast<HWND>(lparam);
 		switch (message) {
@@ -1586,6 +1588,169 @@ protected:
 					return true;
 				}
 				break;
+			}
+			break;
+		}
+		return false;
+	}
+};
+
+
+////////////////////////////////
+// 色の設定．
+////////////////////////////////
+class color_config : public dialog_base {
+	using Color = Settings::Color;
+	using ColorScheme = Settings::ColorScheme;
+
+public:
+	ColorScheme& color;
+	color_config(ColorScheme& color) : color{ color } {}
+
+private:
+	// "Preset..." button.
+	void on_choose_preset(HWND btn) {
+		enum : uintptr_t {
+			light = 1,
+			dark = 2,
+		};
+
+		// get the button rect.
+		TPMPARAMS tpmp{ .cbSize = sizeof(tpmp) };
+		::GetWindowRect(btn, &tpmp.rcExclude);
+
+		// prepare the menu.
+		auto menu = ::CreatePopupMenu();
+		::AppendMenuW(menu, MF_ENABLED | MF_STRING, light, res_str::get(IDS_COLOR_THEME_LIGHT));
+		::AppendMenuW(menu, MF_ENABLED | MF_STRING, dark, res_str::get(IDS_COLOR_THEME_DARK));
+
+		// show the menu on the bottom of the button (right-aligned).
+		uintptr_t id = ::TrackPopupMenuEx(menu,
+			TPM_RIGHTALIGN | TPM_TOPALIGN | TPM_NONOTIFY | TPM_RETURNCMD,
+			tpmp.rcExclude.right, tpmp.rcExclude.bottom, hwnd, &tpmp);
+		::DestroyMenu(menu);
+
+		// set to chosen preset theme, unless the menu is dissmissed.
+		switch (id) {
+		case light:
+			color = ColorScheme::LightTheme();
+			break;
+		case dark:
+			color = ColorScheme::DarkTheme();
+			break;
+		default: return;
+		}
+
+		// redraw the buttons.
+		update_all_buttons();
+	}
+
+	// change the color associated to the clicked button.
+	void choose_color(HWND btn, Color& col) {
+		HWND parent = ::GetAncestor(hwnd, GA_ROOT);
+		static constinit auto palette = [] {
+			auto ret = std::array<COLORREF, 16>{};
+			for (auto& c : ret) c = Color::fromARGB(0x00ffffff);
+			return ret;
+		}();
+		CHOOSECOLORW cc{
+			.lStructSize = sizeof(cc),
+			.hwndOwner = hwnd,
+			.rgbResult = col,
+			.lpCustColors = palette.data(),
+			.Flags = CC_ANYCOLOR | CC_FULLOPEN | CC_RGBINIT,
+		};
+
+		if (ChooseColorW(&cc) == FALSE) return;
+
+		// "enqueue" the selected color to the palette.
+		for (auto i = palette.size(); --i > 0;) palette[i] = palette[i - 1];
+		palette[0] = cc.rgbResult;
+
+		// apply the color.
+		col = cc.rgbResult;
+		update_button(btn);
+	}
+
+	// redraw all colored buttons.
+	void update_all_buttons() {
+		for (auto id : { IDC_BUTTON1, IDC_BUTTON2, IDC_BUTTON3, IDC_BUTTON4, IDC_BUTTON5, })
+			update_button(::GetDlgItem(hwnd, id));
+	}
+	// redraw a single button.
+	static void update_button(HWND btn) { ::InvalidateRect(btn, nullptr, TRUE); }
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_COLOR; }
+
+	bool on_init(HWND) override
+	{
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+		return false;
+	}
+
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case BN_CLICKED:
+				switch (id) {
+					{
+						// clicked the colored buttons.
+						Color* col;
+				case IDC_BUTTON1: col = &color.text;		goto choose;
+				case IDC_BUTTON2: col = &color.chrome;		goto choose;
+				case IDC_BUTTON3: col = &color.back_top;	goto choose;
+				case IDC_BUTTON4: col = &color.back_bottom;	goto choose;
+				case IDC_BUTTON5: col = &color.blank;		goto choose;
+
+				choose:
+					choose_color(ctrl, *col);
+					return true;
+					}
+
+					// clicked the preset themes button.
+				case IDC_BUTTON6:
+					on_choose_preset(ctrl);
+					return true;
+				}
+				break;
+			}
+			break;
+
+		case WM_CTLCOLORBTN:
+		{
+			// place color on each button when it's about to be drawn.
+			Color col;
+			switch (::GetDlgCtrlID(ctrl)) {
+			case IDC_BUTTON1: col = color.text;			break;
+			case IDC_BUTTON2: col = color.chrome;		break;
+			case IDC_BUTTON3: col = color.back_top;		break;
+			case IDC_BUTTON4: col = color.back_bottom;	break;
+			case IDC_BUTTON5: col = color.blank;		break;
+			default: return false;
+			}
+
+			// return the brush that fills the background.
+			::SetDCBrushColor(reinterpret_cast<HDC>(wparam), col);
+			return reinterpret_cast<intptr_t>(::GetStockObject(DC_BRUSH));
+		}
+
+		case WM_SETCURSOR:
+			// make the cursor shape to hand on the colored buttons.
+			switch (::GetDlgCtrlID(reinterpret_cast<HWND>(wparam))) {
+			case IDC_BUTTON1:
+			case IDC_BUTTON2:
+			case IDC_BUTTON3:
+			case IDC_BUTTON4:
+			case IDC_BUTTON5:
+				using namespace sigma_lib::W32::resources::cursor;
+				::SetCursor(get(hand));
+				::SetWindowLongW(hwnd, DWL_MSGRESULT, TRUE); // mark the message as handled.
+				return true;
 			}
 			break;
 		}
@@ -1621,7 +1786,7 @@ private:
 		toast,
 		grid,
 		commands,
-		//color,
+		color,
 
 		separator,
 	};
@@ -1640,6 +1805,7 @@ private:
 		{ IDS_DLG_TAB_ZOOM_WHEEL,	tab_kind::wheel_zoom		},
 		{ IDS_DLG_TAB_GRID,			tab_kind::grid				},
 		{ IDS_DLG_TAB_TOAST,		tab_kind::toast				},
+		{ IDS_DLG_TAB_COLOR,		tab_kind::color				},
 	};
 
 	std::map<tab_kind, std::unique_ptr<vscroll_form>> pages{};
@@ -1733,7 +1899,10 @@ private:
 				},
 			};
 
-		// TODO: color?
+		case tab_kind::color:
+			return new vscroll_form{
+				new color_config{ curr.color },
+			};
 		}
 		return nullptr;
 	}
@@ -1873,7 +2042,7 @@ protected:
 	}
 
 protected:
-	bool handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
 	{
 		switch (message) {
 		case WM_COMMAND:

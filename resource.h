@@ -63,29 +63,32 @@
 #define IDS_DLG_TAB_CMD_OPTIONS         159
 #define IDS_DLG_TAB_TOAST               160
 #define IDS_DLG_TAB_GRID                161
-#define IDS_DLG_TAB_SEPARATOR           162
-#define IDS_DESC_DRAG_KEYCOND           163
-#define IDS_DESC_DRAG_RANGE             164
-#define IDS_DESC_ZOOM_STEPS             165
-#define IDS_DESC_TIP_FRAIL              166
-#define IDS_DESC_TIP_STATIONARY         167
-#define IDS_DESC_TIP_STICKY             168
-#define IDS_DESC_EXEDIT_FAKE            169
-#define IDS_DESC_GRID_KINDS             170
-#define IDS_DESC_CLIPBOARD_FMT          171
-#define IDS_DESC_CMD_NONE               172
-#define IDS_DESC_CMD_SWAP_ZOOM          173
-#define IDS_DESC_CMD_COPY_COLOR         174
-#define IDS_DESC_CMD_COPY_COORD         175
-#define IDS_DESC_CMD_FOLLOW             176
-#define IDS_DESC_CMD_CENTRALIZE         177
-#define IDS_DESC_CMD_GRID               178
-#define IDS_DESC_CMD_ZOOM_UP            179
-#define IDS_DESC_CMD_ZOOM_DOWN          180
-#define IDS_DESC_CMD_BRING_CENTER       181
-#define IDS_DESC_CMD_CXT_MENU           182
-#define IDS_DESC_CMD_SETTINGS           183
-#define IDS_DLG_TOAST_SAMPLE            184
+#define IDS_DLG_TAB_COLOR               162
+#define IDS_DLG_TAB_SEPARATOR           163
+#define IDS_DESC_DRAG_KEYCOND           164
+#define IDS_DESC_DRAG_RANGE             165
+#define IDS_DESC_ZOOM_STEPS             166
+#define IDS_DESC_TIP_FRAIL              167
+#define IDS_DESC_TIP_STATIONARY         168
+#define IDS_DESC_TIP_STICKY             169
+#define IDS_DESC_EXEDIT_FAKE            170
+#define IDS_DESC_GRID_KINDS             171
+#define IDS_DESC_CLIPBOARD_FMT          172
+#define IDS_DESC_CMD_NONE               173
+#define IDS_DESC_CMD_SWAP_ZOOM          174
+#define IDS_DESC_CMD_COPY_COLOR         175
+#define IDS_DESC_CMD_COPY_COORD         176
+#define IDS_DESC_CMD_FOLLOW             177
+#define IDS_DESC_CMD_CENTRALIZE         178
+#define IDS_DESC_CMD_GRID               179
+#define IDS_DESC_CMD_ZOOM_UP            180
+#define IDS_DESC_CMD_ZOOM_DOWN          181
+#define IDS_DESC_CMD_BRING_CENTER       182
+#define IDS_DESC_CMD_CXT_MENU           183
+#define IDS_DESC_CMD_SETTINGS           184
+#define IDS_DLG_TOAST_SAMPLE            185
+#define IDS_COLOR_THEME_LIGHT           186
+#define IDS_COLOR_THEME_DARK            187
 #define IDD_VSCROLLFORM                 800
 #define IDD_SETTINGS                    801
 #define IDD_SETTINGS_FORM_CLICK_ACTION  802
@@ -106,6 +109,7 @@
 #define IDD_SETTINGS_FORM_CMD_CLIPBOARD 817
 #define IDD_SETTINGS_FORM_CMD_DESC      818
 #define IDD_SETTINGS_FORM_FONT          819
+#define IDD_SETTINGS_FORM_COLOR         820
 #define IDC_LIST1                       1001
 #define IDC_COMBO1                      1002
 #define IDC_COMBO2                      1003
@@ -144,6 +148,11 @@
 #define IDC_SLIDER2                     1036
 #define IDC_RECT1                       1037
 #define IDC_BUTTON1                     1038
+#define IDC_BUTTON2                     1039
+#define IDC_BUTTON3                     1040
+#define IDC_BUTTON4                     1041
+#define IDC_BUTTON5                     1042
+#define IDC_BUTTON6                     1043
 #define IDM_CXT_FOLLOW_CURSOR           40001
 #define IDM_CXT_SHOW_GRID               40002
 #define IDM_CXT_SWAP_ZOOM               40003
@@ -161,9 +170,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        820
+#define _APS_NEXT_RESOURCE_VALUE        821
 #define _APS_NEXT_COMMAND_VALUE         40013
-#define _APS_NEXT_CONTROL_VALUE         1039
+#define _APS_NEXT_CONTROL_VALUE         1044
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

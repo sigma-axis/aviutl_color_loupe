@@ -156,12 +156,17 @@ inline constinit struct Settings {
 			text		= { 0x3b,0x3d,0x3f },
 			blank		= { 0xf0,0xf0,0xf0 };
 
-			// Dark theme
-		//	chrome		= { 0x76,0x76,0x76 },
-		//	back_top	= { 0x2b,0x2b,0x2b },
-		//	back_bottom	= { 0x2b,0x2b,0x2b },
-		//	text		= { 0xff,0xff,0xff },
-		//	blank		= { 0x33,0x33,0x33 };
+		constexpr static ColorScheme LightTheme() { return {}; }
+		constexpr static ColorScheme DarkTheme() {
+			return {
+				// Dark theme
+				.chrome		= { 0x76,0x76,0x76 },
+				.back_top	= { 0x2b,0x2b,0x2b },
+				.back_bottom= { 0x2b,0x2b,0x2b },
+				.text		= { 0xff,0xff,0xff },
+				.blank		= { 0x33,0x33,0x33 },
+			};
+		}
 	} color;
 
 	struct Toast {
@@ -389,7 +394,7 @@ inline constinit struct Settings {
 
 #define save_gen(section, tgt, write, hex)	save_raw(static_cast<int32_t>(write(section.tgt)), #section, #tgt, hex)
 #define save_dec(section, tgt)		save_gen(section, tgt, /* id */, false)
-#define save_color(section, tgt)	save_gen(section, tgt, [](auto y) { return y.formattable(); }, true)
+#define save_color(section, tgt)	save_gen(section, tgt, [](auto y) { return y.to_formattable(); }, true)
 #define save_bool(section, tgt)		::WritePrivateProfileStringA(#section, #tgt, section.tgt ? "1" : "0", ini_file)
 #define save_drag(section)	\
 		save_dec(section, keys.button);\
@@ -412,7 +417,7 @@ inline constinit struct Settings {
 		save_dec(tip_drag, rail_mode);
 		save_dec(tip_drag, color_fmt);
 		save_dec(tip_drag, coord_fmt);
-		//save_dec(tip_drag, font_size);
+		save_dec(tip_drag, font_size);
 		save_dec(tip_drag, box_inflate);
 		save_dec(tip_drag, box_tip_gap);
 		save_dec(tip_drag, chrome_thick);
@@ -432,11 +437,11 @@ inline constinit struct Settings {
 		save_dec(zoom, level_min);
 		save_dec(zoom, level_max);
 
-		//save_color(color, chrome);
-		//save_color(color, back_top);
-		//save_color(color, back_bottom);
-		//save_color(color, text);
-		//save_color(color, blank);
+		save_color(color, chrome);
+		save_color(color, back_top);
+		save_color(color, back_bottom);
+		save_color(color, text);
+		save_color(color, blank);
 
 		save_bool(toast, notify_scale);
 		save_bool(toast, notify_follow_cursor);
@@ -445,22 +450,22 @@ inline constinit struct Settings {
 		save_dec(toast, placement);
 		save_dec(toast, scale_format);
 		save_dec(toast, duration);
-		//save_dec(toast, font_size);
-		//save_dec(toast, chrome_thick);
-		//save_dec(toast, chrome_corner);
-		//save_dec(toast, chrome_margin_h);
-		//save_dec(toast, chrome_margin_v);
-		//save_dec(toast, chrome_pad_h);
-		//save_dec(toast, chrome_pad_v);
+		save_dec(toast, font_size);
+		save_dec(toast, chrome_thick);
+		save_dec(toast, chrome_corner);
+		save_dec(toast, chrome_margin_h);
+		save_dec(toast, chrome_margin_v);
+		save_dec(toast, chrome_pad_h);
+		save_dec(toast, chrome_pad_v);
 
-		//{
-		//	char buf_ansi[3 * std::extent_v<decltype(tip.font_name)>];
-		//	::WideCharToMultiByte(CP_UTF8, 0, tip.font_name, -1, buf_ansi, std::size(buf_ansi), nullptr, nullptr);
-		//	::WriteProfileStringA("tip", "font_name", buf_ansi);
+		{
+			char buf_ansi[3 * std::extent_v<decltype(tip_drag.font_name)>];
+			::WideCharToMultiByte(CP_UTF8, 0, tip_drag.font_name, -1, buf_ansi, std::size(buf_ansi), nullptr, nullptr);
+			::WriteProfileStringA("tip", "font_name", buf_ansi);
 
-		//	::WideCharToMultiByte(CP_UTF8, 0, toast.font_name, -1, buf_ansi, std::size(buf_ansi), nullptr, nullptr);
-		//	::WriteProfileStringA("toast", "font_name", buf_ansi);
-		//}
+			::WideCharToMultiByte(CP_UTF8, 0, toast.font_name, -1, buf_ansi, std::size(buf_ansi), nullptr, nullptr);
+			::WriteProfileStringA("toast", "font_name", buf_ansi);
+		}
 
 		save_dec(grid, least_zoom_thin);
 		save_dec(grid, least_zoom_thick);
