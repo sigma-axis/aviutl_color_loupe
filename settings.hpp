@@ -103,7 +103,7 @@ inline constinit struct Settings {
 		int8_t box_inflate		= 4;
 		int8_t box_tip_gap		= 10;
 		int8_t chrome_thick		= 1;
-		int8_t chrome_corner	= 5; // in diameter of the circle.
+		int8_t chrome_corner	= 8; // in diameter of the circle.
 		int8_t chrome_margin_h	= 4;
 		int8_t chrome_margin_v	= 4;
 		int8_t chrome_pad_h		= 10;
@@ -141,10 +141,10 @@ inline constinit struct Settings {
 			.num_steps = 1,
 			.pivot = WheelZoom::center,
 		};
-		int8_t level_min = level_min_min,
-			level_max = level_max_max;
-		constexpr static int8_t level_min_min = -13, level_min_max = 20;
-		constexpr static int8_t level_max_min = -13, level_max_max = 20;
+		int8_t level_min = -13,
+			level_max = 20;
+		constexpr static int8_t level_min_min = -17, level_min_max = 24,
+			level_max_min = level_min_min, level_max_max = level_min_max;
 	} zoom;
 
 	struct ColorScheme {
@@ -194,7 +194,7 @@ inline constinit struct Settings {
 		int8_t font_size = 18;
 
 		int8_t chrome_thick		= 1;
-		int8_t chrome_corner	= 5; // in diameter of the circle.
+		int8_t chrome_corner	= 8; // in diameter of the circle.
 		int8_t chrome_margin_h	= 4;
 		int8_t chrome_margin_v	= 4;
 		int8_t chrome_pad_h		= 6;

@@ -58,7 +58,7 @@ static inline constinit struct LoupeState {
 	// zoom --- manages the scaling ratio of zooming.
 	struct Zoom {
 		int zoom_level, second_level;
-		constexpr static int zoom_level_min = -13, zoom_level_max = 20;
+		constexpr static int zoom_level_min = -17, zoom_level_max = 24;
 
 	private:
 		constexpr static int scale_denominator = 4;
