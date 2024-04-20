@@ -650,18 +650,21 @@ static inline void draw_tip(HDC hdc, const SIZE& canvas, const RECT& box,
 		using enum Settings::CoordFormat;
 	case origin_center:
 	{
-		wchar_t fmt[] = L"X:%7.1f, Y:%7.1f";
-		double x = pix.x - screen.cx / 2.0, y = pix.y - screen.cy / 2.0;
-		if ((screen.cx & 1) == 0) fmt[3] = L'5', fmt[5] = L'0'; // no half-integer.
-		if (screen.cx < 2000) fmt[3]--; // trim by 1 digit, it's rarely necessary.
-		if ((screen.cy & 1) == 0) fmt[12] = L'5', fmt[14] = L'0';
-		if (screen.cy < 2000) fmt[12]--;
-		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, fmt, x, y);
+		constexpr auto len_prec = [](int scr) -> std::pair<int, int> {
+			// no half-integer when (scr & 1) == 0.
+			// at most 3 digits (plus sign) when scr < 2000. 4 digits is rarely necessary.
+			return { 1 + (scr < 2000 ? 3 : 4) + (2 * (scr & 1)), scr & 1 };
+		};
+		auto [x_l, x_p] = len_prec(screen.cx);
+		auto [y_l, y_p] = len_prec(screen.cy);
+		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen,
+			L"X:%*.*f, Y:%*.*f", x_l, x_p, pix.x - screen.cx / 2.0, y_l, y_p, pix.y - screen.cy / 2.0);
 		break;
 	}
 	case origin_top_left:
 	default:
-		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen, L"X:%4d, Y:%4d", pix.x, pix.y);
+		tip_strlen += std::swprintf(&tip_str[tip_strlen], std::size(tip_str) - tip_strlen,
+			L"X:%4d, Y:%4d", pix.x, pix.y);
 		break;
 	}
 
@@ -1403,11 +1406,7 @@ static inline bool copy_coordinate(double win_ox, double win_oy)
 	{
 		x = img_x - w / 2.0; y = img_y - h / 2.0;
 		if (!(std::abs(x) < 10'000 && std::abs(y) < 10'000)) return false;
-
-		wchar_t fmt[] = L"%.1f,%.1f";
-		if ((w & 1) == 0) fmt[2] = L'0';
-		if ((h & 1) == 0) fmt[7] = L'0';
-		std::swprintf(buf, std::size(buf), fmt, x, y);
+		std::swprintf(buf, std::size(buf), L"%.*f,%.*f", w & 1, x, h & 1, y);
 		break;
 	}
 	case origin_top_left:
