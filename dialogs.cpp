@@ -1890,7 +1890,8 @@ private:
 		click_pages:
 			return new vscroll_form{
 				new click_action{ *btn },
-				new click_action_desc{ btn->click },
+				new click_action_desc{ btn->click != Settings::ClickActions::Command::none ?
+					btn->click : btn->dblclk },
 			};
 			}
 		case tab_kind::commands:
