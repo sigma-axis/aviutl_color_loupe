@@ -1313,7 +1313,7 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 		std::size(L"x 123.45"),
 		std::size(L"123.45%"),
 		})];
-	switch (settings.toast.scale_format) {
+	switch (new_level >= 0 ? settings.toast.scale_format : settings.toast.scale_format_low) {
 		using enum Settings::Toast::ScaleFormat;
 	case decimal:
 		std::swprintf(scale, std::size(scale), L"x %0.2f", loupe_state.zoom.scale_ratio());

@@ -3,6 +3,7 @@
 ###############################################################################
 * text=auto
 *.ini text working-tree-encoding=UTF-8 eol=crlf
+*.rc diff=astextplain
 
 ###############################################################################
 # Set default behavior for command prompt diff.

@@ -199,8 +199,8 @@ inline constinit struct Settings {
 		enum class ScaleFormat : uint8_t {
 			fraction = 0, decimal = 1, percent = 2,
 		};
-		ScaleFormat scale_format = ScaleFormat::decimal;
-		// TODO: another format choice for scaling down.
+		ScaleFormat scale_format = ScaleFormat::decimal,
+			scale_format_low = ScaleFormat::decimal;
 
 		int duration = 3000;
 
@@ -353,6 +353,8 @@ inline constinit struct Settings {
 		load_bool(toast, notify_clipboard);
 		load_enum(toast, placement);
 		load_enum(toast, scale_format);
+		toast.scale_format_low = toast.scale_format; // for versioning.
+		load_enum(toast, scale_format_low);
 		load_int(toast, duration);
 		load_int(toast, font_size);
 		load_int(toast, chrome_thick);
@@ -478,6 +480,7 @@ inline constinit struct Settings {
 		save_bool(toast, notify_clipboard);
 		save_dec(toast, placement);
 		save_dec(toast, scale_format);
+		save_dec(toast, scale_format_low);
 		save_dec(toast, duration);
 		save_dec(toast, font_size);
 		save_dec(toast, chrome_thick);

@@ -1125,11 +1125,12 @@ private:
 	void on_change_notify_follow_cursor(bool data_new) { toast.notify_follow_cursor = data_new; }
 	void on_change_notify_grid(bool data_new) { toast.notify_grid = data_new; }
 	void on_change_notify_clipboard(bool data_new) { toast.notify_clipboard = data_new; }
-	void on_change_placement(Placement data_new) { toast.placement = data_new; }
 	void on_change_duration(int data_new) {
 		toast.duration = std::clamp(data_new, Toast::duration_min, Toast::duration_max);
 	}
+	void on_change_placement(Placement data_new) { toast.placement = data_new; }
 	void on_change_scale_format(ScaleFormat data_new) { toast.scale_format = data_new; }
+	void on_change_scale_format_low(ScaleFormat data_new) { toast.scale_format_low = data_new; }
 	void update_view() {
 		if (update_target != nullptr && update_target->hwnd != nullptr)
 			::PostMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
@@ -1170,14 +1171,15 @@ protected:
 			toast.notify_grid ? BST_CHECKED : BST_UNCHECKED, {});
 		::SendMessageW(::GetDlgItem(hwnd, IDC_CHECK4), BM_SETCHECK,
 			toast.notify_clipboard ? BST_CHECKED : BST_UNCHECKED, {});
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), toast.duration, toast.duration_min, toast.duration_max);
 		for (auto& item : radio_data) {
 			auto radio = ::GetDlgItem(hwnd, item.id);
 			::SetWindowLongW(radio, GWL_USERDATA, static_cast<LONG>(item.data));
 			if (item.data == toast.placement)
 				::SendMessageW(radio, BM_SETCHECK, BST_CHECKED, {});
 		}
-		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), toast.duration, toast.duration_min, toast.duration_max);
 		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), toast.scale_format, combo_data);
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO2), toast.scale_format_low, combo_data);
 
 		return false;
 	}
@@ -1192,12 +1194,6 @@ protected:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
 			case BN_CLICKED:
 				switch (id) {
-				case IDC_RADIO1: case IDC_RADIO2: case IDC_RADIO3:
-				case IDC_RADIO4: case IDC_RADIO5: case IDC_RADIO6:
-				case IDC_RADIO7: case IDC_RADIO8: case IDC_RADIO9:
-					on_change_placement(static_cast<Placement>(::GetWindowLongW(ctrl, GWL_USERDATA)));
-					update_view();
-					return true;
 				case IDC_CHECK1:
 					on_change_notify_scale(checked);
 					return true;
@@ -1209,6 +1205,12 @@ protected:
 					return true;
 				case IDC_CHECK4:
 					on_change_notify_clipboard(checked);
+					return true;
+				case IDC_RADIO1: case IDC_RADIO2: case IDC_RADIO3:
+				case IDC_RADIO4: case IDC_RADIO5: case IDC_RADIO6:
+				case IDC_RADIO7: case IDC_RADIO8: case IDC_RADIO9:
+					on_change_placement(static_cast<Placement>(::GetWindowLongW(ctrl, GWL_USERDATA)));
+					update_view();
 					return true;
 				}
 				break;
@@ -1223,6 +1225,9 @@ protected:
 				switch (id) {
 				case IDC_COMBO1:
 					on_change_scale_format(get_combo_data<ScaleFormat>(ctrl));
+					return true;
+				case IDC_COMBO2:
+					on_change_scale_format_low(get_combo_data<ScaleFormat>(ctrl));
 					return true;
 				}
 				break;
