@@ -52,7 +52,7 @@ namespace dialogs::basics
 				ret = that->handler(message, wparam, lparam);
 				if (message == WM_NCDESTROY) that->hwnd = nullptr;
 			}
-			
+
 			return ret;
 		}
 		bool no_callback = false;

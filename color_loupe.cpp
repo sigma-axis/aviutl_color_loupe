@@ -1034,6 +1034,55 @@ protected:
 	Settings::WheelZoom WheelZoom() override { return settings.tip_drag.wheel; }
 } tip_drag;
 
+static bool apply_zoom(int new_level, double win_ox, double win_oy);
+static inline constinit class ZoomDrag : public DragState {
+	int revert_level{};
+	constexpr static auto& level = loupe_state.zoom.zoom_level;
+	constexpr static auto& level_min = settings.zoom.level_min;
+	constexpr static auto& level_max = settings.zoom.level_max;
+
+	static bool apply_zoom(int new_level) {
+		return ::apply_zoom(new_level, 0, 0);
+	}
+
+protected:
+	bool Ready_core(context& cxt) override
+	{
+		if (!image.is_valid()) return false;
+
+		revert_level = level;
+
+		using namespace resources::cursor;
+		::SetCursor(get(sizens));
+		return true;
+	}
+	void Delta_core(const POINT& curr, context& cxt) override
+	{
+		constexpr auto& cfg = settings.zoom_drag;
+
+		auto diff = curr.y - drag_start.y;
+		if (cfg.expand_up) diff = -diff;
+
+		constexpr auto floor_div = [](int n, int d) {
+			auto div = std::div(n, d);
+			if ((div.rem ^ d) < 0) div.quot--;
+			return div.quot;
+		};
+		diff = floor_div(diff + cfg.len_per_step / 2, cfg.len_per_step);
+
+		cxt.redraw_loupe |= apply_zoom(revert_level + cfg.num_steps * diff);
+	}
+	void Cancel_core(context& cxt) override
+	{
+		cxt.redraw_loupe |= apply_zoom(revert_level);
+	}
+
+	DragInvalidRange InvalidRange() override { return settings.zoom_drag.range; }
+	Settings::KeysActivate KeysActivate() override { return settings.zoom_drag.keys; }
+	// intensionally disable.
+	Settings::WheelZoom WheelZoom() override { return Settings::WheelZoom{ .enabled = false }; }
+} zoom_drag;
+
 static inline constinit class ExEditDrag : public DragState {
 	POINT revert{}, last{};
 
@@ -1184,7 +1233,7 @@ inline void DragState::InitiateDrag(HWND hwnd, const POINT& drag_start, context&
 		shift = (cxt.wparam & MK_SHIFT) != 0,
 		alt = ::GetKeyState(VK_MENU) < 0;
 
-	constexpr DragState* drags[] = { &loupe_drag, &tip_drag, &exedit_drag };
+	constexpr DragState* drags[] = { &loupe_drag, &tip_drag, &zoom_drag, &exedit_drag };
 	void_drag.surrogate = nullptr;
 	for (auto* drag : drags) {
 		// check the button/key-combination condition.
@@ -1259,7 +1308,11 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 
 	// toast message.
 	if (!settings.toast.notify_scale) return true;
-	wchar_t scale[std::max(std::size(L"x 123/456"), std::max(std::size(L"x 123.45"), std::size(L"123.45%")))];
+	wchar_t scale[std::max({
+		std::size(L"x 123/456"),
+		std::size(L"x 123.45"),
+		std::size(L"123.45%"),
+		})];
 	switch (settings.toast.scale_format) {
 		using enum Settings::Toast::ScaleFormat;
 	case decimal:
@@ -1271,8 +1324,8 @@ static inline bool apply_zoom(int new_level, double win_ox, double win_oy)
 		break;
 	case fraction:
 	default:
-		auto [n, d] = loupe_state.zoom.scale_ratio_Q();
-		if (d == 1) std::swprintf(scale, std::size(scale), L"x %d", n);
+		if (auto [n, d] = loupe_state.zoom.scale_ratio_Q();
+			d == 1) std::swprintf(scale, std::size(scale), L"x %d", n);
 		else std::swprintf(scale, std::size(scale), L"x %d/%d", n, d);
 		break;
 	}
@@ -1845,7 +1898,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.10"
+#define PLUGIN_VERSION	"v2.20-beta1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)

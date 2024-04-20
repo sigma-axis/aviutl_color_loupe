@@ -120,6 +120,20 @@ inline constinit struct Settings {
 		constexpr static int8_t chrome_pad_v_min	= -16,	chrome_pad_v_max	= 32;
 	} tip_drag{};
 
+	struct ZoomDrag {
+		KeysActivate keys{ MouseButton::none, KeysActivate::dontcare, KeysActivate::dontcare, KeysActivate::dontcare };
+		DragInvalidRange range = DragInvalidRange::AlwaysValid();
+
+		bool expand_up = true;
+		uint8_t num_steps = 1;
+		uint16_t len_per_step = 20;
+
+		constexpr static uint8_t
+			num_steps_min = WheelZoom::num_steps_min,
+			num_steps_max = WheelZoom::num_steps_max;
+		constexpr static uint16_t len_per_step_min = 1, len_per_step_max = 1024;
+	} zoom_drag{};
+
 	struct ExEditDrag {
 		KeysActivate keys{ MouseButton::left, KeysActivate::on, KeysActivate::dontcare, KeysActivate::dontcare };
 		DragInvalidRange range = DragInvalidRange::AlwaysValid();
@@ -279,24 +293,26 @@ inline constinit struct Settings {
 			[](auto y) { return static_cast<decltype(section.tgt)>(y); }, [](auto x) { return static_cast<int>(x); })
 #define load_color(section, tgt)	load_gen(section, tgt, \
 			[](auto y) { return Color::fromARGB(y); }, [](auto x) { return x.to_formattable(); })
-
+#define load_zoom(section, header)	\
+		load_bool(section, header##enabled);\
+		load_bool(section, header##reversed);\
+		load_int(section, header##num_steps);\
+		load_enum(section, header##pivot)
 #define load_drag(section)	\
 		load_enum(section, keys.button);\
 		load_enum(section, keys.ctrl);\
 		load_enum(section, keys.shift);\
 		load_enum(section, keys.alt);\
 		load_int(section, range.distance); \
-		load_int(section, range.timespan);\
-		load_bool(section, wheel.enabled);\
-		load_bool(section, wheel.reversed);\
-		load_int(section, wheel.num_steps);\
-		load_enum(section, wheel.pivot)
+		load_int(section, range.timespan)
 
 		load_drag(loupe_drag);
+		load_zoom(loupe_drag, wheel.);
 		load_bool(loupe_drag, lattice);
 		load_enum(loupe_drag, rail_mode);
 
 		load_drag(tip_drag);
+		load_zoom(tip_drag, wheel.);
 		load_enum(tip_drag, mode);
 		load_enum(tip_drag, rail_mode);
 		load_enum(tip_drag, color_fmt);
@@ -311,14 +327,17 @@ inline constinit struct Settings {
 		load_int(tip_drag, chrome_pad_h);
 		load_int(tip_drag, chrome_pad_v);
 
+		load_drag(zoom_drag);
+		load_bool(zoom_drag, expand_up);
+		load_int(zoom_drag, num_steps);
+		load_int(zoom_drag, len_per_step);
+
 		load_drag(exedit_drag);
+		load_zoom(exedit_drag, wheel.);
 		load_enum(exedit_drag, fake_shift);
 		load_enum(exedit_drag, fake_alt);
 
-		load_bool(zoom, wheel.enabled);
-		load_bool(zoom, wheel.reversed);
-		load_int(zoom, wheel.num_steps);
-		load_enum(zoom, wheel.pivot);
+		load_zoom(zoom, wheel.);
 		load_int(zoom, level_min);
 		load_int(zoom, level_max);
 
@@ -378,6 +397,7 @@ inline constinit struct Settings {
 		load_enum(commands, copy_coord_fmt);
 
 #undef load_drag
+#undef load_zoom
 #undef load_color
 #undef load_enum
 #undef load_bool
@@ -398,23 +418,26 @@ inline constinit struct Settings {
 #define save_dec(section, tgt)		save_gen(section, tgt, /* id */, false)
 #define save_color(section, tgt)	save_gen(section, tgt, [](auto y) { return y.to_formattable(); }, true)
 #define save_bool(section, tgt)		::WritePrivateProfileStringA(#section, #tgt, section.tgt ? "1" : "0", ini_file)
+#define save_zoom(section, header)	\
+		save_bool(section, header##enabled);\
+		save_bool(section, header##reversed);\
+		save_dec(section, header##num_steps);\
+		save_dec(section, header##pivot)
 #define save_drag(section)	\
 		save_dec(section, keys.button);\
 		save_dec(section, keys.ctrl);\
 		save_dec(section, keys.shift);\
 		save_dec(section, keys.alt);\
 		save_dec(section, range.distance); \
-		save_dec(section, range.timespan);\
-		save_bool(section, wheel.enabled);\
-		save_bool(section, wheel.reversed);\
-		save_dec(section, wheel.num_steps);\
-		save_dec(section, wheel.pivot)
+		save_dec(section, range.timespan)
 
 		save_drag(loupe_drag);
+		save_zoom(loupe_drag, wheel.);
 		save_dec(loupe_drag, lattice);
 		save_dec(loupe_drag, rail_mode);
 
 		save_drag(tip_drag);
+		save_zoom(tip_drag, wheel.);
 		save_dec(tip_drag, mode);
 		save_dec(tip_drag, rail_mode);
 		save_dec(tip_drag, color_fmt);
@@ -429,14 +452,17 @@ inline constinit struct Settings {
 		save_dec(tip_drag, chrome_pad_h);
 		save_dec(tip_drag, chrome_pad_v);
 
+		save_drag(zoom_drag);
+		save_bool(zoom_drag, expand_up);
+		save_dec(zoom_drag, num_steps);
+		save_dec(zoom_drag, len_per_step);
+
 		save_drag(exedit_drag);
+		save_zoom(exedit_drag, wheel.);
 		save_dec(exedit_drag, fake_shift);
 		save_dec(exedit_drag, fake_alt);
 
-		save_bool(zoom, wheel.enabled);
-		save_bool(zoom, wheel.reversed);
-		save_dec(zoom, wheel.num_steps);
-		save_dec(zoom, wheel.pivot);
+		save_zoom(zoom, wheel.);
 		save_dec(zoom, level_min);
 		save_dec(zoom, level_max);
 
@@ -498,6 +524,7 @@ inline constinit struct Settings {
 		// lines commented out are setting items that threre're no means to change at runtime. (all cleared now.)
 
 #undef save_drag
+#undef save_zoom
 #undef save_bool
 #undef save_color
 #undef save_dec

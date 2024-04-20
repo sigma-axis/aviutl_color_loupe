@@ -883,6 +883,74 @@ protected:
 
 
 ////////////////////////////////
+// 拡大率ドラッグ固有．
+////////////////////////////////
+class zoom_drag : public dialog_base {
+	using ZoomDrag = Settings::ZoomDrag;
+
+public:
+	ZoomDrag& drag;
+	zoom_drag(ZoomDrag& drag) : drag{ drag } {}
+
+private:
+	void on_change_expand_up(bool data_new) { drag.expand_up = data_new; }
+	void on_change_num_steps(uint8_t data_new) {
+		drag.num_steps = std::clamp(data_new, ZoomDrag::num_steps_min, ZoomDrag::num_steps_max);
+	}
+	void on_change_len_per_step(uint16_t data_new) {
+		drag.len_per_step = std::clamp(data_new, ZoomDrag::len_per_step_min, ZoomDrag::len_per_step_max);
+	}
+
+protected:
+	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_DRAG_ZOOM; }
+
+	bool on_init(HWND) override
+	{
+		// suppress notifications from controls.
+		auto sc = suppress_callback();
+		::SendMessageW(::GetDlgItem(hwnd, drag.expand_up ? IDC_RADIO1 : IDC_RADIO2), BM_SETCHECK, BST_CHECKED, {});
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), drag.len_per_step, drag.len_per_step_min, drag.len_per_step_max);
+		init_spin(::GetDlgItem(hwnd, IDC_SPIN2), drag.num_steps, drag.num_steps_min, drag.num_steps_max);
+
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_DRAG_ZOOM)));
+
+		return false;
+	}
+
+	intptr_t handler(UINT message, WPARAM wparam, LPARAM lparam) override
+	{
+		auto ctrl = reinterpret_cast<HWND>(lparam);
+		switch (message) {
+		case WM_COMMAND:
+			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case BN_CLICKED:
+				switch (id) {
+				case IDC_RADIO1:
+				case IDC_RADIO2:
+					on_change_expand_up(id == IDC_RADIO1);
+					return true;
+				}
+				break;
+			case EN_CHANGE:
+				switch (id) {
+				case IDC_EDIT1:
+					on_change_len_per_step(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN1)));
+					return true;
+				case IDC_EDIT2:
+					on_change_num_steps(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN2)));
+					return true;
+				}
+				break;
+			}
+			break;
+		}
+		return false;
+	}
+};
+
+
+////////////////////////////////
 // 拡張編集ドラッグ固有．
 ////////////////////////////////
 class exedit_drag : public dialog_base {
@@ -1802,8 +1870,8 @@ private:
 
 		drag_move_loupe,
 		drag_show_tip,
+		drag_zoom,
 		drag_exedit,
-		//drag_zoom,
 
 		wheel_zoom,
 
@@ -1817,6 +1885,7 @@ private:
 	constexpr static CtrlData<tab_kind> headers[] = {
 		{ IDS_DLG_TAB_DRAG_LOUPE,	tab_kind::drag_move_loupe	},
 		{ IDS_DLG_TAB_DRAG_TIP,		tab_kind::drag_show_tip		},
+		{ IDS_DLG_TAB_DRAG_ZOOM,	tab_kind::drag_zoom			},
 		{ IDS_DLG_TAB_DRAG_EXEDIT,	tab_kind::drag_exedit		},
 		{ IDS_DLG_TAB_SEPARATOR,	tab_kind::separator			},
 		{ IDS_DLG_TAB_CLK_LEFT,		tab_kind::action_left		},
@@ -1857,6 +1926,12 @@ private:
 					curr.tip_drag.font_size_min, curr.tip_drag.font_size_max, update_target
 				},
 				new tip_drag_format{ curr.tip_drag, update_target },
+			};
+		case tab_kind::drag_zoom:
+			return new vscroll_form{
+				new drag_keys{ curr.zoom_drag.keys },
+				new drag_range{ curr.zoom_drag.range },
+				new zoom_drag{ curr.zoom_drag },
 			};
 		case tab_kind::drag_exedit:
 			return new vscroll_form{
