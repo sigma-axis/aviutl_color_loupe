@@ -54,7 +54,7 @@
   - 初期状態だとカラーコードは `#RRGGBB`の形式で座標は左上を原点とした値ですが，[設定](#ドラッグ操作の設定)で変更できます．
   - Shift+ドラッグで上下左右の軸に沿って移動できます．
 
-  ![色・座標の情報表示](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/40558807-64dd-4033-9b05-01892f7f40e2)
+  ![色・座標の情報表示](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/d2c57a35-ab0d-438b-8181-4fa3093f2128)
 
 - Ctrl+左クリックドラッグ
 
@@ -138,7 +138,7 @@
 
 ポップアップメニュー (デフォルトだと Ctrl+右クリック，Shift+F10 でも可能) の「色ルーペの設定...」を選択するとダイアログが表示され，操作のカスタマイズなど各種設定ができます．
 
-![「色ルーペの設定」ダイアログ](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/32a8cec2-6399-4989-9db3-304b9182983d)
+![「色ルーペの設定」ダイアログ](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/ab73adf6-fec9-49b4-9c40-4a628a932d54)
 
 設定項目の中には説明書きが添えられていることもあるので，そちらもご参照ください．
 
