@@ -692,7 +692,7 @@ private:
 	void on_change_coord(CoordFormat data_new) { drag.coord_fmt = data_new; }
 	void update_view() {
 		if (update_target != nullptr && update_target->hwnd != nullptr)
-			::SendMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
+			::PostMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
 	}
 
 protected:
@@ -848,6 +848,7 @@ protected:
 					on_change_##field(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN##id)));\
 					goto update
 					populate_field(invoke_on_change);
+#undef invoke_on_change
 #undef populate_field
 
 				update:
@@ -1063,7 +1064,7 @@ private:
 	void on_change_scale_format(ScaleFormat data_new) { toast.scale_format = data_new; }
 	void update_view() {
 		if (update_target != nullptr && update_target->hwnd != nullptr)
-			::SendMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
+			::PostMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
 	}
 
 protected:
@@ -1212,8 +1213,7 @@ private:
 
 			auto font = dialogs::ExtFunc::CreateUprightFont(toast.font_name, toast.font_size);
 			dialogs::ExtFunc::DrawToast(cvs.hdc(), cvs.sz(),
-				sample.size() <= 1 ? ((reinterpret_cast<int>(hwnd) & 0x40) == 0) ? L"(>~<)" : L"¯\\_(ツ)_/¯"
-				: sample.c_str(),
+				sample.size() > 0 ? sample.c_str() : ((reinterpret_cast<int>(hwnd) & 0x40) == 0) ? L"(>~<)" : L"\u00af\\_(ツ)_/\u00af",
 				font, toast, color_scheme);
 			::DeleteObject(font);
 
@@ -1252,6 +1252,7 @@ protected:
 					on_change_##field(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN##id)));\
 					goto update
 					populate_field(invoke_on_change);
+#undef invoke_on_change
 #undef populate_field
 
 				case IDC_EDIT7:
@@ -1368,7 +1369,7 @@ public:
 	int8_t& size;
 	int8_t const min, max;
 	dialog_base* const update_target;
-	font_settings(wchar_t(&name)[LF_FACESIZE], int8_t& size, int8_t min, int8_t max,
+	font_settings(decltype(name) name, int8_t& size, int8_t min, int8_t max,
 		dialog_base* const update_target)
 		: name{ name }, size{ size }, min{ min }, max{ max }, update_target{ update_target } {}
 
@@ -1379,7 +1380,7 @@ private:
 	void on_change_size(int8_t data_new) { size = std::clamp(data_new, min, max); }
 	void update_view() {
 		if (update_target != nullptr && update_target->hwnd != nullptr)
-			::SendMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
+			::PostMessageW(update_target->hwnd, PrvMsg::UpdateView, {}, {});
 	}
 
 protected:
@@ -1718,6 +1719,26 @@ protected:
 					// clicked the preset themes button.
 				case IDC_BUTTON6:
 					on_choose_preset(ctrl);
+					return true;
+				}
+				break;
+
+				// thickening the button edge when focused.
+			case BN_SETFOCUS:
+			case BN_KILLFOCUS:
+				switch (id) {
+				case IDC_BUTTON1:
+				case IDC_BUTTON2:
+				case IDC_BUTTON3:
+				case IDC_BUTTON4:
+				case IDC_BUTTON5:
+					constexpr uint32_t focused_style = WS_EX_CLIENTEDGE, unfocused_style = WS_EX_STATICEDGE;
+					::SetWindowLongW(ctrl, GWL_EXSTYLE, (::GetWindowLongW(ctrl, GWL_EXSTYLE)
+						& ~(focused_style | unfocused_style))
+						| (code == BN_SETFOCUS ? focused_style : unfocused_style));
+					// as the window style changed, update must be done by ::SetWindowPos().
+					::SetWindowPos(ctrl, {}, {}, {}, {}, {},
+						SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 					return true;
 				}
 				break;
@@ -2064,8 +2085,7 @@ protected:
 
 			case LBN_SELCHANGE:
 				if (id == IDC_LIST1) {
-					auto list = reinterpret_cast<HWND>(lparam);
-					on_select(get_list_data<tab_kind>(list));
+					on_select(get_list_data<tab_kind>(reinterpret_cast<HWND>(lparam)));
 					return true;
 				}
 				break;
