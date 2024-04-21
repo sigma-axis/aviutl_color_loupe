@@ -893,24 +893,31 @@ public:
 	zoom_drag(ZoomDrag& drag) : drag{ drag } {}
 
 private:
-	void on_change_expand_up(bool data_new) { drag.expand_up = data_new; }
 	void on_change_num_steps(uint8_t data_new) {
 		drag.num_steps = std::clamp(data_new, ZoomDrag::num_steps_min, ZoomDrag::num_steps_max);
 	}
 	void on_change_len_per_step(uint16_t data_new) {
 		drag.len_per_step = std::clamp(data_new, ZoomDrag::len_per_step_min, ZoomDrag::len_per_step_max);
 	}
+	void on_change_expand_up(bool data_new) { drag.expand_up = data_new; }
+	void on_change_pivot(ZoomDrag::Pivot data_new) { drag.pivot = data_new; }
 
 protected:
 	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_DRAG_ZOOM; }
 
 	bool on_init(HWND) override
 	{
+		constexpr static CtrlData<ZoomDrag::Pivot> combo_data[] = {
+			{ IDS_ZOOM_PIVOT_CENTER,	ZoomDrag::Pivot::center	},
+			{ IDS_ZOOM_PIVOT_START_PT,	ZoomDrag::Pivot::cursor	},
+		};
+
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-		::SendMessageW(::GetDlgItem(hwnd, drag.expand_up ? IDC_RADIO1 : IDC_RADIO2), BM_SETCHECK, BST_CHECKED, {});
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), drag.len_per_step, drag.len_per_step_min, drag.len_per_step_max);
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN2), drag.num_steps, drag.num_steps_min, drag.num_steps_max);
+		::SendMessageW(::GetDlgItem(hwnd, drag.expand_up ? IDC_RADIO1 : IDC_RADIO2), BM_SETCHECK, BST_CHECKED, {});
+		init_combo_items(::GetDlgItem(hwnd, IDC_COMBO1), drag.pivot, combo_data);
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT3), WM_SETTEXT,
 			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_DRAG_ZOOM)));
@@ -924,6 +931,16 @@ protected:
 		switch (message) {
 		case WM_COMMAND:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case EN_CHANGE:
+				switch (id) {
+				case IDC_EDIT1:
+					on_change_len_per_step(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN1)));
+					return true;
+				case IDC_EDIT2:
+					on_change_num_steps(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN2)));
+					return true;
+				}
+				break;
 			case BN_CLICKED:
 				switch (id) {
 				case IDC_RADIO1:
@@ -932,13 +949,10 @@ protected:
 					return true;
 				}
 				break;
-			case EN_CHANGE:
+			case CBN_SELCHANGE:
 				switch (id) {
-				case IDC_EDIT1:
-					on_change_len_per_step(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN1)));
-					return true;
-				case IDC_EDIT2:
-					on_change_num_steps(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN2)));
+				case IDC_COMBO1:
+					on_change_pivot(get_combo_data<ZoomDrag::Pivot>(ctrl));
 					return true;
 				}
 				break;

@@ -121,12 +121,15 @@ inline constinit struct Settings {
 	} tip_drag{};
 
 	struct ZoomDrag {
+		using Pivot = WheelZoom::Pivot;
+
 		KeysActivate keys{ MouseButton::none, KeysActivate::dontcare, KeysActivate::dontcare, KeysActivate::dontcare };
 		DragInvalidRange range = DragInvalidRange::AlwaysValid();
 
 		bool expand_up = true;
 		uint8_t num_steps = 1;
 		uint16_t len_per_step = 20;
+		Pivot pivot = Pivot::center;
 
 		constexpr static uint8_t
 			num_steps_min = WheelZoom::num_steps_min,
@@ -331,6 +334,7 @@ inline constinit struct Settings {
 		load_bool(zoom_drag, expand_up);
 		load_int(zoom_drag, num_steps);
 		load_int(zoom_drag, len_per_step);
+		load_enum(zoom_drag, pivot);
 
 		load_drag(exedit_drag);
 		load_zoom(exedit_drag, wheel.);
@@ -458,6 +462,7 @@ inline constinit struct Settings {
 		save_bool(zoom_drag, expand_up);
 		save_dec(zoom_drag, num_steps);
 		save_dec(zoom_drag, len_per_step);
+		save_dec(zoom_drag, pivot);
 
 		save_drag(exedit_drag);
 		save_zoom(exedit_drag, wheel.);

@@ -1040,12 +1040,34 @@ protected:
 static bool apply_zoom(int new_level, double win_ox, double win_oy);
 static inline constinit class ZoomDrag : public DragState {
 	int revert_level{};
+	double revert_x{}, revert_y{}, win_ox{}, win_oy{};
+
 	constexpr static auto& level = loupe_state.zoom.zoom_level;
 	constexpr static auto& level_min = settings.zoom.level_min;
 	constexpr static auto& level_max = settings.zoom.level_max;
+	constexpr static auto& pos_x = loupe_state.position.x;
+	constexpr static auto& pos_y = loupe_state.position.y;
 
-	static bool apply_zoom(int new_level) {
-		return ::apply_zoom(new_level, 0, 0);
+	bool apply_zoom(int new_level) {
+		if (new_level == level) return false;
+
+		if (new_level == revert_level) {
+			// firstly rewind the scale, so the toast will pop up.
+			::apply_zoom(revert_level, 0, 0);
+
+			// rewind the position too.
+			pos_x = revert_x;
+			pos_y = revert_y;
+			return true;
+		}
+		else {
+			// firstly rewind to the initial state,
+			// so the after effect of "clamping to the edge of the screen" doesn't affect.
+			level = revert_level;
+			pos_x = revert_x;
+			pos_y = revert_y;
+			return ::apply_zoom(new_level, win_ox, win_oy);
+		}
 	}
 
 protected:
@@ -1054,6 +1076,14 @@ protected:
 		if (!image.is_valid()) return false;
 
 		revert_level = level;
+		revert_x = pos_x;
+		revert_y = pos_y;
+		if (settings.zoom_drag.pivot == Settings::WheelZoom::cursor) {
+			auto [cx, cy] = BufferedDC::client_size(hwnd);
+			win_ox = drag_start.x - cx / 2.0;
+			win_oy = drag_start.y - cy / 2.0;
+		}
+		else win_ox = win_oy = 0;
 
 		using namespace resources::cursor;
 		::SetCursor(get(sizens));
