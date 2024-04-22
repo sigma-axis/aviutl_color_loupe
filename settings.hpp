@@ -287,21 +287,21 @@ inline constinit struct Settings {
 			return static_cast<decltype(def)>(
 				::GetPrivateProfileIntA(section, key, static_cast<int32_t>(def), ini_file));
 		};
-#define load_gen(section, tgt, read, write)	section.tgt = read(read_raw(write(section.tgt), #section, #tgt))
-#define load_int(section, tgt)		load_gen(section, tgt, \
-			[&](auto y) { return std::clamp(y, section.tgt##_min, section.tgt##_max); }, /*id*/)
-#define load_bool(section, tgt)		load_gen(section, tgt, \
-			[](auto y) { return y != 0; }, [](auto x) { return x ? 1 : 0; })
-#define load_enum(section, tgt)		load_gen(section, tgt, \
-			[](auto y) { return static_cast<decltype(section.tgt)>(y); }, [](auto x) { return static_cast<int>(x); })
-#define load_color(section, tgt)	load_gen(section, tgt, \
-			[](auto y) { return Color::fromARGB(y); }, [](auto x) { return x.to_formattable(); })
-#define load_zoom(section, header)	\
+	#define load_gen(section, tgt, read, write)	section.tgt = read(read_raw(write(section.tgt), #section, #tgt))
+	#define load_int(section, tgt)	\
+		load_gen(section, tgt, [&](auto y) { return std::clamp(y, section.tgt##_min, section.tgt##_max); }, /*id*/)
+	#define load_bool(section, tgt)	\
+		load_gen(section, tgt, [](auto y) { return y != 0; }, [](auto x) { return x ? 1 : 0; })
+	#define load_enum(section, tgt)	\
+		load_gen(section, tgt, [](auto y) { return static_cast<decltype(section.tgt)>(y); }, [](auto x) { return static_cast<int>(x); })
+	#define load_color(section, tgt)	\
+		load_gen(section, tgt, [](auto y) { return Color::fromARGB(y); }, [](auto x) { return x.to_formattable(); })
+	#define load_zoom(section, header)	\
 		load_bool(section, header##enabled);\
 		load_bool(section, header##reversed);\
 		load_int(section, header##num_steps);\
 		load_enum(section, header##pivot)
-#define load_drag(section)	\
+	#define load_drag(section)	\
 		load_enum(section, keys.button);\
 		load_enum(section, keys.ctrl);\
 		load_enum(section, keys.shift);\
@@ -402,13 +402,13 @@ inline constinit struct Settings {
 		load_enum(commands, copy_color_fmt);
 		load_enum(commands, copy_coord_fmt);
 
-#undef load_drag
-#undef load_zoom
-#undef load_color
-#undef load_enum
-#undef load_bool
-#undef load_int
-#undef load_gen
+	#undef load_drag
+	#undef load_zoom
+	#undef load_color
+	#undef load_enum
+	#undef load_bool
+	#undef load_int
+	#undef load_gen
 	}
 
 	// saving to .ini file.
@@ -420,16 +420,16 @@ inline constinit struct Settings {
 			::WritePrivateProfileStringA(section, key, buf, ini_file);
 		};
 
-#define save_gen(section, tgt, write, col)	save_raw(static_cast<int32_t>(write(section.tgt)), #section, #tgt, col)
-#define save_dec(section, tgt)		save_gen(section, tgt, /* id */, false)
-#define save_color(section, tgt)	save_gen(section, tgt, [](auto y) { return y.to_formattable(); }, true)
-#define save_bool(section, tgt)		::WritePrivateProfileStringA(#section, #tgt, section.tgt ? "1" : "0", ini_file)
-#define save_zoom(section, header)	\
+	#define	save_gen(section, tgt, write, col)	save_raw(static_cast<int32_t>(write(section.tgt)), #section, #tgt, col)
+	#define	save_dec(section, tgt)				save_gen(section, tgt, /* id */, false)
+	#define	save_color(section, tgt)			save_gen(section, tgt, [](auto y) { return y.to_formattable(); }, true)
+	#define	save_bool(section, tgt)				::WritePrivateProfileStringA(#section, #tgt, section.tgt ? "1" : "0", ini_file)
+	#define	save_zoom(section, header)	\
 		save_bool(section, header##enabled);\
 		save_bool(section, header##reversed);\
 		save_dec(section, header##num_steps);\
 		save_dec(section, header##pivot)
-#define save_drag(section)	\
+	#define	save_drag(section)	\
 		save_dec(section, keys.button);\
 		save_dec(section, keys.ctrl);\
 		save_dec(section, keys.shift);\
@@ -531,11 +531,11 @@ inline constinit struct Settings {
 
 		// lines commented out are setting items that threre're no means to change at runtime. (all cleared now.)
 
-#undef save_drag
-#undef save_zoom
-#undef save_bool
-#undef save_color
-#undef save_dec
-#undef save_gen
+	#undef save_drag
+	#undef save_zoom
+	#undef save_bool
+	#undef save_color
+	#undef save_dec
+	#undef save_gen
 	}
 } settings;

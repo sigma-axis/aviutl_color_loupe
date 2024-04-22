@@ -828,9 +828,9 @@ protected:
 	{
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-#define set_spin(id, field)	init_spin(::GetDlgItem(hwnd, IDC_SPIN##id), drag.field, Settings::TipDrag::field##_min, Settings::TipDrag::field##_max)
+	#define set_spin(id, field)	init_spin(::GetDlgItem(hwnd, IDC_SPIN##id), drag.field, Settings::TipDrag::field##_min, Settings::TipDrag::field##_max)
 		populate_field(set_spin);
-#undef set_spin
+	#undef set_spin
 
 		std::srand(reinterpret_cast<uint32_t>(hwnd));
 		return false;
@@ -843,13 +843,12 @@ protected:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
 			case EN_CHANGE:
 				switch (id) {
-#define invoke_on_change(id, field)	\
+				#define invoke_on_change(id, field)	\
 				case IDC_EDIT##id:\
 					on_change_##field(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN##id)));\
 					goto update
 					populate_field(invoke_on_change);
-#undef invoke_on_change
-#undef populate_field
+				#undef invoke_on_change
 
 				update:
 					update_view();
@@ -879,6 +878,7 @@ protected:
 		}
 		return false;
 	}
+#undef populate_field
 };
 
 
@@ -1316,9 +1316,9 @@ protected:
 	{
 		// suppress notifications from controls.
 		auto sc = suppress_callback();
-#define set_spin(id, field)	init_spin(::GetDlgItem(hwnd, IDC_SPIN##id), toast.field, Settings::Toast::field##_min, Settings::Toast::field##_max)
+	#define set_spin(id, field)	init_spin(::GetDlgItem(hwnd, IDC_SPIN##id), toast.field, Settings::Toast::field##_min, Settings::Toast::field##_max)
 		populate_field(set_spin);
-#undef set_spin
+	#undef set_spin
 
 		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT7), WM_SETTEXT,
 			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DLG_TOAST_SAMPLE)));
@@ -1334,13 +1334,12 @@ protected:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
 			case EN_CHANGE:
 				switch (id) {
-#define invoke_on_change(id, field)	\
+				#define invoke_on_change(id, field)	\
 				case IDC_EDIT##id:\
 					on_change_##field(get_spin_value(::GetDlgItem(hwnd, IDC_SPIN##id)));\
 					goto update
 					populate_field(invoke_on_change);
-#undef invoke_on_change
-#undef populate_field
+				#undef invoke_on_change
 
 				case IDC_EDIT7:
 				update:
@@ -1362,6 +1361,7 @@ protected:
 		}
 		return false;
 	}
+#undef populate_field
 };
 
 
@@ -1448,21 +1448,25 @@ protected:
 // フォントの設定．
 ////////////////////////////////
 class font_settings : public dialog_base {
-	using Pivot = Settings::WheelZoom::Pivot;
-	using ClickActions = Settings::ClickActions;
-
 public:
-	wchar_t (&name)[LF_FACESIZE];
+	wchar_t(&name)[LF_FACESIZE];
 	int8_t& size;
 	int8_t const min, max;
 	dialog_base* const update_target;
 	font_settings(decltype(name) name, int8_t& size, int8_t min, int8_t max,
-		dialog_base* const update_target)
+		dialog_base* update_target)
 		: name{ name }, size{ size }, min{ min }, max{ max }, update_target{ update_target } {}
 
 private:
-	void on_change_name(HWND ctrl) {
+	void on_edit_name(HWND ctrl) {
 		::SendMessageW(ctrl, WM_GETTEXT, std::size(name), reinterpret_cast<LPARAM>(name));
+	}
+	void on_select_name(HWND ctrl) {
+		size_t idx = ::SendMessageW(ctrl, CB_GETCURSEL, {}, {});
+		if (idx == CB_ERR) return;
+		if (size_t len = ::SendMessageW(ctrl, CB_GETLBTEXTLEN, idx, {});
+			len == CB_ERR || std::size(name) <= len) return;
+		::SendMessageW(ctrl, CB_GETLBTEXT, idx, reinterpret_cast<LPARAM>(name));
 	}
 	void on_change_size(int8_t data_new) { size = std::clamp(data_new, min, max); }
 	void update_view() {
@@ -1488,11 +1492,13 @@ protected:
 			return TRUE;
 		}, reinterpret_cast<LPARAM>(combo));
 		::ReleaseDC(nullptr, hdc);
-		::SendMessageW(combo, CB_SELECTSTRING, -1, reinterpret_cast<LPARAM>(name));
+		::SendMessageW(combo, WM_SETTEXT, {}, reinterpret_cast<LPARAM>(name));
 
 		// font size.
 		init_spin(::GetDlgItem(hwnd, IDC_SPIN1), size, min, max);
 
+		::SendMessageW(::GetDlgItem(hwnd, IDC_EDIT2), WM_SETTEXT,
+			{}, reinterpret_cast<LPARAM>(res_str::get(IDS_DESC_FONT_STYLE)));
 		return false;
 	}
 
@@ -1502,10 +1508,18 @@ protected:
 		switch (message) {
 		case WM_COMMAND:
 			switch (auto id = 0xffff & wparam, code = wparam >> 16; code) {
+			case CBN_EDITCHANGE:
+				switch (id) {
+				case IDC_COMBO1:
+					on_edit_name(ctrl);
+					update_view();
+					return true;
+				}
+				break;
 			case CBN_SELCHANGE:
 				switch (id) {
 				case IDC_COMBO1:
-					on_change_name(ctrl);
+					on_select_name(ctrl);
 					update_view();
 					return true;
 				}
