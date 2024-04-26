@@ -89,6 +89,7 @@
       <AdditionalIncludeDirectories>sdk/</AdditionalIncludeDirectories>
       <OmitFramePointers>true</OmitFramePointers>
       <AdditionalOptions>/source-charset:utf-8 /execution-charset:shift_jis %(AdditionalOptions)</AdditionalOptions>
+      <UseFullPaths>false</UseFullPaths>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
