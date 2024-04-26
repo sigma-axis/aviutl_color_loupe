@@ -144,7 +144,7 @@
 
 ポップアップメニュー (デフォルトだと Ctrl+右クリック，Shift+F10 でも可能) の「色ルーペの設定...」を選択するとダイアログが表示され，操作のカスタマイズなど各種設定ができます．
 
-![「色ルーペの設定」ダイアログ](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/ab73adf6-fec9-49b4-9c40-4a628a932d54)
+![「色ルーペの設定」ダイアログ](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/ff963c78-4a0b-4688-b465-a43a3ec8b242)
 
 設定項目の中には説明書きが添えられていることもあるので，そちらもご参照ください．
 
@@ -186,7 +186,7 @@
 
   - **フォントの設定**
 
-    ![フォントの設定](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/447f98a7-ea9a-4a57-8c88-f94dc532c29b)
+    ![フォントの設定](https://github.com/sigma-axis/aviutl_color_loupe/assets/132639613/de423163-8e81-4f53-980e-79b041c975d3)
 
     [色・座標の情報表示](#ドラッグ操作の設定)に使われるフォント名やフォントサイズを指定できます．ここでの指定は[通知メッセージ](#通知メッセージの設定)とは別枠で，独立に指定できます．
 
