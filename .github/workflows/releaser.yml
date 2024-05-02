@@ -11,6 +11,9 @@ env:
   SOLUTION_NAME: color_loupe
   # Path to the solution file relative to the root of the project.
 
+  TIME_ZONE: Asia/Tokyo
+  # Time zone for the timestamp when releasing.
+
 permissions:
   contents: read
 
@@ -76,7 +79,7 @@ jobs:
     - name: Prepare release notes
       id: release-notes
       run: |
-        echo "name=${{ github.ref_name }} ($(TZ='Asia/Tokyo' date +'%Y-%m-%d'))" >> $GITHUB_OUTPUT
+        echo "name=${{ github.ref_name }} ($(TZ='${{ env.TIME_ZONE }}' date +'%Y-%m-%d'))" >> $GITHUB_OUTPUT
         echo "### 更新内容" >> ReleaseNotes.txt
         phase=0
         IFS=$'\n'
