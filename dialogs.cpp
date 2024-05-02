@@ -968,26 +968,26 @@ protected:
 // 拡張編集ドラッグ固有．
 ////////////////////////////////
 class exedit_drag : public dialog_base {
-	using KeyFake = Settings::ExEditDrag::KeyFake;
+	using flag_map = Settings::ExEditDrag::flag_map;
 
 public:
 	Settings::ExEditDrag& drag;
 	exedit_drag(Settings::ExEditDrag& drag) : drag{ drag } {}
 
 private:
-	void on_change_shift(KeyFake data_new) { drag.fake_shift = data_new; }
-	void on_change_alt(KeyFake data_new) { drag.fake_alt = data_new; }
+	void on_change_shift(flag_map data_new) { drag.fake_shift = data_new; }
+	void on_change_alt(flag_map data_new) { drag.fake_alt = data_new; }
 
 protected:
 	uintptr_t template_id() const override { return IDD_SETTINGS_FORM_DRAG_EXEDIT; }
 
 	bool on_init(HWND) override
 	{
-		constexpr CtrlData<KeyFake> combo_data[] = {
-			{ IDS_MODKEY_FAKE_FLAT,	KeyFake::flat	},
-			{ IDS_MODKEY_FAKE_ON,	KeyFake::on		},
-			{ IDS_MODKEY_FAKE_OFF,	KeyFake::off	},
-			{ IDS_MODKEY_FAKE_INV,	KeyFake::invert	},
+		constexpr CtrlData<flag_map> combo_data[] = {
+			{ IDS_MODKEY_FAKE_FLAT,	flag_map::id	},
+			{ IDS_MODKEY_FAKE_ON,	flag_map::on	},
+			{ IDS_MODKEY_FAKE_OFF,	flag_map::off	},
+			{ IDS_MODKEY_FAKE_INV,	flag_map::inv	},
 		};
 
 		// suppress notifications from controls.
@@ -1010,10 +1010,10 @@ protected:
 			case CBN_SELCHANGE:
 				switch (id) {
 				case IDC_COMBO1:
-					on_change_shift(get_combo_data<KeyFake>(ctrl));
+					on_change_shift(get_combo_data<flag_map>(ctrl));
 					return true;
 				case IDC_COMBO2:
-					on_change_alt(get_combo_data<KeyFake>(ctrl));
+					on_change_alt(get_combo_data<flag_map>(ctrl));
 					return true;
 				}
 				break;

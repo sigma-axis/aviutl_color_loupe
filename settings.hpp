@@ -18,6 +18,8 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+#include "key_states.hpp"
+
 #include "color_abgr.hpp"
 #include "drag_states.hpp"
 
@@ -142,13 +144,9 @@ inline constinit struct Settings {
 		DragInvalidRange range = DragInvalidRange::AlwaysValid();
 		WheelZoom wheel{ true, false, 1, WheelZoom::cursor };
 
-		enum KeyFake : uint8_t {
-			flat	= 0,
-			off		= 1,
-			on		= 2,
-			invert	= 3,
-		};
-		KeyFake fake_shift = flat, fake_alt = flat; // no ctrl key; it's kind of special.
+		using flag_map = sigma_lib::W32::UI::flag_map;
+		using enum flag_map;
+		flag_map fake_shift = id, fake_alt = id; // no ctrl key; it's kind of special.
 	} exedit_drag;
 
 	struct Zoom {

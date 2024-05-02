@@ -1136,23 +1136,12 @@ static inline constinit class ExEditDrag : public DragState {
 			cxt.redraw_main |= exedit_fp->func_WndProc(exedit_fp->hwnd, message,
 				force_btn(cxt.wparam, btn), code_pos(pos.x, pos.y), cxt.editp, exedit_fp) != FALSE;
 	}
-	static ForceKeyState key_fake(short vkey, Settings::ExEditDrag::KeyFake fake, auto&& curr) {
-		switch (fake) {
-			using enum Settings::ExEditDrag::KeyFake;
-		case flat:	return { ForceKeyState::vkey_invalid, false };
-		case off:	return { vkey, false };
-		case on:	return { vkey, true };
-		case invert:
-		default:	return { vkey, !curr() };
-		}
-	}
 	static void fake_wparam(const Settings::ExEditDrag& op, WPARAM& wp) {
 		switch (op.fake_shift) {
-			using enum Settings::ExEditDrag::KeyFake;
-		case off:		wp &= ~MK_SHIFT; break;
-		case on:		wp |= MK_SHIFT; break;
-		case invert:	wp ^= MK_SHIFT; break;
-		case flat: default: break;
+		case flag_map::off:	wp &= ~MK_SHIFT; break;
+		case flag_map::on:	wp |= MK_SHIFT; break;
+		case flag_map::inv:	wp ^= MK_SHIFT; break;
+		case flag_map::id: default: break;
 		}
 	}
 
@@ -1191,8 +1180,7 @@ protected:
 	void Start_core(context& cxt) override
 	{
 		const auto& op = settings.exedit_drag;
-		auto shift = key_fake(VK_SHIFT, op.fake_shift, [&] { return (cxt.wparam & MK_SHIFT) != 0; }),
-			alt = key_fake(VK_MENU, op.fake_alt, [] { return ::GetKeyState(VK_MENU) < 0; });
+		ForceKeyState k{ VK_SHIFT, op.fake_shift, VK_MENU, op.fake_alt };
 		fake_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseDown, last, MK_LBUTTON);
 	}
@@ -1203,16 +1191,14 @@ protected:
 		last = pt;
 
 		const auto& op = settings.exedit_drag;
-		auto shift = key_fake(VK_SHIFT, op.fake_shift, [&] { return (cxt.wparam & MK_SHIFT) != 0; }),
-			alt = key_fake(VK_MENU, op.fake_alt, [] { return ::GetKeyState(VK_MENU) < 0; });
+		ForceKeyState k{ VK_SHIFT, op.fake_shift, VK_MENU, op.fake_alt };
 		fake_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseMove, last, MK_LBUTTON);
 	}
 	void End_core(context& cxt) override
 	{
 		const auto& op = settings.exedit_drag;
-		auto shift = key_fake(VK_SHIFT, op.fake_shift, [&] { return (cxt.wparam & MK_SHIFT) != 0; }),
-			alt = key_fake(VK_MENU, op.fake_alt, [] { return ::GetKeyState(VK_MENU) < 0; });
+		ForceKeyState k{ VK_SHIFT, op.fake_shift, VK_MENU, op.fake_alt };
 		fake_wparam(op, cxt.wparam);
 		send_message(cxt, FilterMessage::MainMouseUp, last, 0);
 	}
@@ -1927,7 +1913,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID lpvReserved)
 // 看板．
 ////////////////////////////////
 #define PLUGIN_NAME		"色ルーペ"
-#define PLUGIN_VERSION	"v2.22"
+#define PLUGIN_VERSION	"v2.23-beta1"
 #define PLUGIN_AUTHOR	"sigma-axis"
 #define PLUGIN_INFO_FMT(name, ver, author)	(name##" "##ver##" by "##author)
 #define PLUGIN_INFO		PLUGIN_INFO_FMT(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR)
