@@ -1208,7 +1208,7 @@ protected:
 		// like when Alt is pressed or released during the drag,
 		// but sometimes it works well and can be helpful, so leave this feature as is.
 		cxt.wparam = 0;
-		ForceKeyState shift{ VK_SHIFT, false }, alt{ VK_MENU, false };
+		ForceKeyState k{ VK_SHIFT, false, VK_MENU, false };
 		send_message(cxt, FilterMessage::MainMouseMove, revert, MK_LBUTTON);
 		send_message(cxt, FilterMessage::MainMouseUp, revert, 0);
 	}
