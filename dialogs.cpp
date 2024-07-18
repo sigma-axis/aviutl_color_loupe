@@ -1766,7 +1766,7 @@ private:
 			.Flags = CC_ANYCOLOR | CC_FULLOPEN | CC_RGBINIT,
 		};
 
-		if (ChooseColorW(&cc) == FALSE) return;
+		if (::ChooseColorW(&cc) == FALSE) return;
 
 		// "enqueue" the selected color to the palette.
 		for (auto i = palette.size(); --i > 0;) palette[i] = palette[i - 1];

@@ -1698,11 +1698,8 @@ static BOOL func_WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, 
 		if (fp->exfunc->is_filter_window_disp(fp)) {
 			ext_obj.activate();
 
-			if (fp->exfunc->is_editing(editp) && !fp->exfunc->is_saving(editp)) {
-				int w, h;
-				fp->exfunc->get_frame_size(editp, &w, &h);
-				on_update(w, h, fp->exfunc->get_disp_pixelp(editp, 0));
-			}
+			if (fp->exfunc->is_editing(editp) && !fp->exfunc->is_saving(editp))
+				on_update(editp->w1, editp->h1, fp->exfunc->get_disp_pixelp(editp, 0));
 			cxt.redraw_loupe = true;
 		}
 		else ext_obj.deactivate(), DragState::Abort(cxt);
@@ -1927,7 +1924,8 @@ extern "C" __declspec(dllexport) FilterPluginDLL* __stdcall GetFilterTable(void)
 	static constinit FilterPluginDLL filter{
 		.flag = Flag::DispFilter | Flag::AlwaysActive | Flag::ExInformation |
 			Flag::MainMessage | Flag::NoInitData |
-			Flag::WindowThickFrame | Flag::WindowSize,
+			Flag::WindowThickFrame | Flag::WindowSize | 
+			Flag::PriorityLowest,
 		.x = initial_width, .y = initial_height,
 		.name = PLUGIN_NAME,
 
